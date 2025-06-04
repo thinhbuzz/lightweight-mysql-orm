@@ -1,4 +1,13 @@
-import type { ColumnMetadata, EntityMetadata, RelationMetadata, TransformHooks } from '../types/common';
+import type {
+    ColumnMetadata,
+    EntityMetadata,
+    ManyToManyRelationMetadata,
+    ManyToOneRelationMetadata,
+    OneToManyRelationMetadata,
+    OneToOneRelationMetadata,
+    RelationMetadata,
+    TransformHooks,
+} from '../types/common';
 
 const metadataStore = new Map<Function, EntityMetadata>();
 
@@ -21,10 +30,7 @@ export const getEntityMetadata = (target: Function): EntityMetadata => {
     return metadata;
 };
 
-export const saveEntityMetadata = (
-    target: Function,
-    metadata: EntityMetadata,
-) => {
+export const saveEntityMetadata = (target: Function, metadata: EntityMetadata): void => {
     metadataStore.set(target, metadata);
 };
 
@@ -33,7 +39,7 @@ export const createColumnMetadata = (
 ): ColumnMetadata => {
     return {
         propertyKey: options.propertyKey || '',
-        columnName: options.columnName || '',
+        columnName: options.columnName || options.propertyKey || '',
         type: options.type || 'string',
         hidden: options.hidden ?? false,
         primary: options.primary ?? false,
@@ -47,15 +53,55 @@ export const initializeTransformHooks = (): TransformHooks<any> => ({
 });
 
 export const createRelationMetadata = (
-    options: Partial<RelationMetadata> = {},
+    relationData: RelationMetadata,
 ): RelationMetadata => {
-    return {
-        propertyKey: options.propertyKey || '',
-        type: options.type || 'OneToOne',
-        target: options.target || (() => Object),
-        foreignKey: options.foreignKey,
-        inverseSide: options.inverseSide,
-        where: options.where,
-        hidden: options.hidden,
-    };
+    const propertyKey = relationData.propertyKey || '';
+    const target = relationData.target || (() => Object);
+    const hidden = relationData.hidden ?? false;
+    const where = relationData.where;
+
+    switch (relationData.type) {
+        case 'OneToOne':
+            return {
+                type: 'OneToOne',
+                propertyKey,
+                target,
+                hidden,
+                where,
+                foreignKey: relationData.foreignKey,
+                inverseSide: relationData.inverseSide,
+            } as OneToOneRelationMetadata;
+        case 'OneToMany':
+            return {
+                type: 'OneToMany',
+                propertyKey,
+                target,
+                hidden,
+                where,
+                foreignKey: relationData.foreignKey,
+                inverseSide: relationData.inverseSide,
+            } as OneToManyRelationMetadata;
+        case 'ManyToOne':
+            return {
+                type: 'ManyToOne',
+                propertyKey,
+                target,
+                hidden,
+                where,
+                foreignKey: relationData.foreignKey,
+            } as ManyToOneRelationMetadata;
+        case 'ManyToMany':
+            return {
+                type: 'ManyToMany',
+                propertyKey,
+                target,
+                hidden,
+                where,
+                joinTableName: relationData.joinTableName,
+                joinColumnName: relationData.joinColumnName,
+                inverseJoinColumnName: relationData.inverseJoinColumnName,
+            } as ManyToManyRelationMetadata;
+        default:
+            throw new Error(`Unknown relation type: ${(relationData as any).type}`);
+    }
 };

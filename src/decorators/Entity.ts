@@ -1,5 +1,5 @@
 import { getEntityMetadata, saveEntityMetadata } from '../core/EntityMetadata';
-import type { EntityMetadata } from '../types/common';
+import type { EntityMetadata, JsonSerializable } from '../types/common';
 
 export interface EntityOptions {
     tableName: string;
@@ -20,7 +20,8 @@ export const Entity = (options: EntityOptions): ClassDecorator => {
                 });
                 metadata.relations.forEach(relation => {
                     if (!relation.hidden) {
-                        json[relation.propertyKey] = this[relation.propertyKey]?.toJSON();
+                        const instance = this[relation.propertyKey] as JsonSerializable | JsonSerializable[] | undefined;
+                        json[relation.propertyKey] = Array.isArray(instance) ? instance.map((item) => item.toJSON()) : instance?.toJSON();
                     }
                 });
                 return json;

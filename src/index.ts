@@ -8,6 +8,7 @@ export * from './decorators/Transform';
 export * from './decorators/OneToOne';
 export * from './decorators/OneToMany';
 export * from './decorators/ManyToOne';
+export * from './decorators/ManyToMany';
 
 // Export core functionality
 export * from './core/BaseRepository';
@@ -17,4 +18,4 @@ export * from './core/EntityMetadata';
 export * from './config/db';
 
 // Export transaction management
-export * from './transaction/TransactionManager';
+export * from './transaction/transaction';

@@ -3,6 +3,8 @@ import { createPool as mySQLCreatePool } from 'mysql2/promise';
 
 export let printQuery = false;
 
+export let sourceEntityIdAlias = '_orm_source_fk_'; // Alias for the source FK in the query result
+
 export const createPool = (config: PoolOptions): Pool => {
     if (config.debug) {
         printQuery = true;

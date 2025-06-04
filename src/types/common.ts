@@ -35,17 +35,48 @@ export interface TransformHooks<T> {
     afterLoad?: (entity: T | Partial<T>) => any;
 }
 
-export type RelationType = 'OneToOne' | 'OneToMany' | 'ManyToOne';
-
-export interface RelationMetadata {
+// Base interface for all relations
+export interface BaseRelationMetadata {
     propertyKey: string;
-    type: RelationType;
     target: () => Function; // Function that returns entity class
-    foreignKey?: string;
-    inverseSide?: string;
     where?: WhereClause<any>;
     hidden?: boolean;
 }
+
+// Specific metadata for OneToOne
+export interface OneToOneRelationMetadata extends BaseRelationMetadata {
+    type: 'OneToOne';
+    foreignKey?: string;
+    inverseSide?: string; // Optional, as it might be the owner or not
+}
+
+// Specific metadata for OneToMany
+export interface OneToManyRelationMetadata extends BaseRelationMetadata {
+    type: 'OneToMany';
+    foreignKey?: string; // Key on the Many side, inferred if inverseSide is present
+    inverseSide: string;  // Property name on the Many side that maps back
+}
+
+// Specific metadata for ManyToOne
+export interface ManyToOneRelationMetadata extends BaseRelationMetadata {
+    type: 'ManyToOne';
+    foreignKey?: string; // Key on this entity's table
+}
+
+// Specific metadata for ManyToMany
+export interface ManyToManyRelationMetadata extends BaseRelationMetadata {
+    type: 'ManyToMany';
+    joinTableName: string;
+    joinColumnName: string;       // FK in join table for the current entity
+    inverseJoinColumnName: string; // FK in join table for the target entity
+}
+
+// Union type for all relation metadata
+export type RelationMetadata =
+    | OneToOneRelationMetadata
+    | OneToManyRelationMetadata
+    | ManyToOneRelationMetadata
+    | ManyToManyRelationMetadata;
 
 export type Rel<T> = T;
 export type FieldKeys<T> = {
@@ -117,3 +148,7 @@ export class ORMError extends Error {
 export type RelationFindOptions<T> = { relations?: FieldKeys<T>[] };
 export type TrashedFindOptions = { withDeleted?: boolean };
 export type FindOptions<T> = RelationFindOptions<T> & TrashedFindOptions;
+
+export interface JsonSerializable {
+    toJSON(): Record<string, any>;
+}

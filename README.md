@@ -6,7 +6,7 @@ A TypeScript-first, decorator-based ORM for MySQL with built-in support for rela
 
 - 🎯 **TypeScript-first** with full type safety
 - 🏷️ **Decorator-based** entity definitions
-- 🔗 **Relationship support** (OneToOne, OneToMany, ManyToOne)
+- 🔗 **Relationship support** (OneToOne, OneToMany, ManyToOne, ManyToMany)
 - 🗑️ **Soft delete** functionality
 - 🔄 **Data transformations** with hooks
 - 💾 **Transaction support**
@@ -26,7 +26,7 @@ npm install -D @types/mysql2
 ### 1. Define Entities
 
 ```typescript
-import { Entity, Column, OneToMany, ManyToOne } from 'lightweight-mysql-orm';
+import { Entity, Column, OneToMany, ManyToOne, ManyToMany } from 'lightweight-mysql-orm';
 
 @Entity({ tableName: 'users', softDelete: true })
 export class User {
@@ -44,6 +44,13 @@ export class User {
 
     @OneToMany(() => Post, { inverseSide: 'user' })
     posts: Post[];
+
+    @ManyToMany(() => Role, {
+        joinTableName: 'user_roles',
+        joinColumnName: 'user_id',
+        inverseJoinColumnName: 'role_id'
+    })
+    roles: Role[];
 }
 
 @Entity({ tableName: 'posts' })
@@ -62,6 +69,15 @@ export class Post {
 
     @ManyToOne(() => User, { foreignKey: 'user_id' })
     user: User;
+}
+
+@Entity({ tableName: 'roles' })
+export class Role {
+    @Column({ primary: true, type: 'number' })
+    id: number;
+
+    @Column({ type: 'string' })
+    name: string;
 }
 ```
 
@@ -100,10 +116,14 @@ const user = await userRepo.create({
 });
 
 // Find with relations
-const userWithPosts = await userRepo.findOne(
+const userWithPostsAndRoles = await userRepo.findOne(
     { email: 'john@example.com' },
-    { relations: ['posts'] }
+    { relations: ['posts', 'roles'] }
 );
+
+// Access loaded relations
+console.log(userWithPostsAndRoles.posts); // Post[]
+console.log(userWithPostsAndRoles.roles); // Role[]
 
 // Advanced queries
 const activeUsers = await userRepo.find({
@@ -189,6 +209,20 @@ interface OneToOneOptions<T> {
     inverseSide?: string;
     hidden?: boolean;
     where?: WhereClause<T>;
+}
+```
+
+#### @ManyToMany(target, options)
+
+Defines a many-to-many relationship.
+
+```typescript
+interface ManyToManyOptions<T> {
+    joinTableName: string;        // Name of the join table
+    joinColumnName: string;       // Foreign key in join table for the current entity
+    inverseJoinColumnName: string; // Foreign key in join table for the target entity
+    hidden?: boolean;
+    where?: WhereClause<T>;      // Optional conditions for fetching related entities
 }
 ```
 

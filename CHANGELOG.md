@@ -7,7 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.0.0] - 2025-01-01
+### Added
+
+## [1.1.0] - 2025-06-04
+
+### Added
+- Support for ManyToMany relationships (`@ManyToMany` decorator and repository logic)
+
+## [1.0.0] - 2025-06-04
 
 ### Added
 - Initial release of lightweight MySQL ORM
