@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] - 2025-01-01
+
 ### Added
 - Initial release of lightweight MySQL ORM
 - TypeScript-first decorator-based entity definitions
@@ -27,11 +29,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Soft Deletes**: Built-in soft delete with restore functionality
 - **Transformations**: Lifecycle hooks for data processing
 - **Transactions**: Transaction manager for atomic operations
-
-## [1.0.0] - TBD
-
-### Added
-- Initial stable release
 
 ---
 

@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     
     permissions:
-      contents: read
+      contents: write  # Required for creating releases
       id-token: write  # Required for npm provenance
       
     steps:
@@ -20,7 +20,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: '1'
+          bun-version: 'latest'
           registry-url: 'https://registry.npmjs.org'
 
       - name: Setup Node.js
@@ -44,12 +44,12 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           
       - name: Create GitHub Release
-        uses: actions/create-release@v1
+        uses: softprops/action-gh-release@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{ github.ref_name }}
-          release_name: Release ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
           body: |
             ## Changes in ${{ github.ref_name }}
             
@@ -60,4 +60,4 @@ jobs:
             npm install lightweight-mysql-orm@${{ github.ref_name }}
             ```
           draft: false
-          prerelease: false 
+          prerelease: false
