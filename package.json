@@ -1,0 +1,50 @@
+{
+  "name": "lightweight-mysql-orm",
+  "description": "A TypeScript-first, decorator-based ORM for MySQL with support for relationships, soft deletes, transformations, and transactions",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "mysql",
+    "orm",
+    "typescript",
+    "decorators",
+    "database",
+    "sql",
+    "mysql2",
+    "relationships",
+    "soft-delete"
+  ],
+  "author": "Thinh Buzz",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/thinhbuzz/lightweight-mysql-orm.git"
+  },
+  "bugs": {
+    "url": "https://github.com/thinhbuzz/lightweight-mysql-orm/issues"
+  },
+  "homepage": "https://github.com/thinhbuzz/lightweight-mysql-orm#readme",
+  "devDependencies": {
+    "@types/bun": "^1.2.15"
+  },
+  "peerDependencies": {
+    "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "mysql2": "^3.14.1"
+  },
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run clean && npm run build",
+    "version": "npm run build",
+    "postversion": "git push && git push --tags"
+  }
+}
