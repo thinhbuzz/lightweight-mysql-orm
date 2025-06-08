@@ -233,7 +233,7 @@ interface ManyToManyOptions<T> {
 
 ```typescript
 // Find single record
-findOne(where: WhereClause<T>, options?: FindOptions<T>): Promise<T | null>
+findOne(where: WhereClause<T>, options?: FindOneOptions<T>): Promise<T | null>
 
 // Find multiple records
 find(where: WhereClause<T>, options?: FindOptions<T>): Promise<T[]>

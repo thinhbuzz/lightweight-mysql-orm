@@ -147,7 +147,9 @@ export class ORMError extends Error {
 }
 
 export type RelationFindOptions<T> = { relations?: FieldKeys<T>[] };
-export type FindOptions<T> = RelationFindOptions<T> & DeletedFindOptions;
+export type OffsetLimitOptions = { offset?: number; limit?: number };
+export type FindOneOptions<T> = RelationFindOptions<T> & DeletedFindOptions;
+export type FindOptions<T> = FindOneOptions<T> & OffsetLimitOptions;
 
 export interface JsonSerializable {
     toJSON(): Record<string, any>;

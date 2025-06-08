@@ -3,6 +3,7 @@ import { options } from '../config/db';
 import {
     type Connection,
     type FieldKeys,
+    type FindOneOptions,
     type FindOptions,
     type ManyToManyRelationMetadata,
     type ManyToOneRelationMetadata,
@@ -53,7 +54,7 @@ export class BaseRepository<T extends object> {
         return columns.map(() => '??').join(', ');
     }
 
-    async findOne(where: WhereClause<T>, options: FindOptions<T> = {}): Promise<T | null> {
+    async findOne(where: WhereClause<T>, options: FindOneOptions<T> = {}): Promise<T | null> {
         const [whereClauses, whereValues] = this.renderWhereClauses(where, options);
         const whereClause = this.renderWhereClaude(whereClauses);
         const selectColumns = this.renderSelectColumns(whereValues);
@@ -112,7 +113,15 @@ export class BaseRepository<T extends object> {
 
         const whereClause = this.renderWhereClaude(whereClauses);
         const selectColumns = this.renderSelectColumns(whereValues);
-        const sql = `SELECT ${selectColumns} FROM ?? ${whereClause}`;
+        const limit = options.limit ? ` LIMIT ?` : '';
+        if (limit) {
+            whereValues.push(options.limit as QueryParam);
+        }
+        const offset = options.offset ? ` OFFSET ?` : '';
+        if (offset) {
+            whereValues.push(options.offset as QueryParam);
+        }
+        const sql = `SELECT ${selectColumns} FROM ?? ${whereClause}${limit}${offset}`;
         const rows = await this.query(sql, whereValues) as T[];
         if (Array.isArray(rows)) {
             const entities = rows.map(row => this.mapToEntity(row));
@@ -322,6 +331,9 @@ export class BaseRepository<T extends object> {
     }
 
     private async loadRelations(entities: T[], relations: FieldKeys<T>[]): Promise<void> {
+        if (!entities.length) {
+            return;
+        }
         const metadata = this.metadata;
 
         for (const relationName of relations) {
