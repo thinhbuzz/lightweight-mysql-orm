@@ -1,5 +1,5 @@
 import type { Pool, QueryResult, ResultSetHeader } from 'mysql2/promise';
-import { printQuery, sourceEntityIdAlias } from '../config/db';
+import { options } from '../config/db';
 import {
     type Connection,
     type FieldKeys,
@@ -35,7 +35,7 @@ export class BaseRepository<T extends object> {
     }
 
     async query(sql: string, params?: QueryParams): Promise<QueryResult> {
-        if (printQuery) {
+        if (options.printQuery) {
             console.info('Executing SQL:', sql);
             if (params && params.length > 0) {
                 console.info('\tParameters:', params);
@@ -469,7 +469,7 @@ export class BaseRepository<T extends object> {
             targetAlias,
             joinTableAlias,
             joinColumnName,
-            sourceEntityIdAlias,
+            options.sourceEntityIdAlias,
             targetMetadata.tableName,
             targetAlias,
             joinTableName,
@@ -502,7 +502,7 @@ export class BaseRepository<T extends object> {
         entities.forEach(entity => map.set((entity as T)[currentPrimaryKeyColumn.propertyKey as keyof T], []));
 
         for (const row of relatedEntitiesRaw) {
-            const sourceEntityFkValue = row[sourceEntityIdAlias as keyof T];
+            const sourceEntityFkValue = row[options.sourceEntityIdAlias as keyof T];
             const targetEntity = targetRepoInstance.mapToEntity(row) as T; // mapToEntity will ignore the alias column
 
             if (map.has(sourceEntityFkValue)) {

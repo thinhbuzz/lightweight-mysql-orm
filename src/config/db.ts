@@ -1,13 +1,24 @@
 import type { Pool, PoolOptions } from 'mysql2/promise';
 import { createPool as mySQLCreatePool } from 'mysql2/promise';
 
-export let printQuery = false;
+export interface Options {
+    printQuery?: boolean;
+    sourceEntityIdAlias?: string;
+}
 
-export let sourceEntityIdAlias = '_orm_source_fk_'; // Alias for the source FK in the query result
+export const options: Options = {
+    printQuery: false,
+    sourceEntityIdAlias: '_orm_source_fk_',
+};
+
+export function setOptions(newOptions: Options): Options {
+    Object.assign(options, newOptions);
+    return options;
+}
 
 export const createPool = (config: PoolOptions): Pool => {
     if (config.debug) {
-        printQuery = true;
+        setOptions({ printQuery: true });
         delete config.debug;
         console.log('MySQL Pool Debug Mode Enabled');
     }
