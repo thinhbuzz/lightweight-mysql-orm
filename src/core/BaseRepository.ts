@@ -233,12 +233,16 @@ export class BaseRepository<T extends object> {
         return this.update(where, { [metadata.softDeleteColumn!]: null } as Partial<T>, { withDeleted: true });
     }
 
-    private applyTransformHooks(entity: Partial<T>, hooks: TransformHooks<T>): Partial<T> {
+    private applyBeforeSaveHook(entity: Partial<T>, hooks: TransformHooks<T>): Partial<T> {
 
         if (hooks.beforeSave) {
             entity = hooks.beforeSave(entity);
         }
 
+        return entity;
+    }
+
+    private applyAfterLoadHook(entity: T, hooks: TransformHooks<T>): Partial<T> {
         if (hooks.afterLoad) {
             entity = hooks.afterLoad(entity);
         }
@@ -266,7 +270,7 @@ export class BaseRepository<T extends object> {
                     value = Boolean(value) as T[keyof T];
                     break;
                 case 'date':
-                    if (!(value instanceof Date)) {
+                    if (!(value as unknown instanceof Date)) {
                         value = new Date(value as string) as T[keyof T];
                     }
                     break;
@@ -280,13 +284,13 @@ export class BaseRepository<T extends object> {
             entity[column.propertyKey as keyof T] = value;
         }
 
-        return this.applyTransformHooks(entity, metadata.transformHooks) as T;
+        return this.applyAfterLoadHook(entity, metadata.transformHooks) as T;
     }
 
     private mapToDB(entity: Partial<T>): any {
         const metadata = this.metadata;
         const dbObject: any = {};
-        const transformed = this.applyTransformHooks(entity, metadata.transformHooks);
+        const transformed = this.applyBeforeSaveHook(entity, metadata.transformHooks);
 
         for (const column of metadata.columns) {
             const value = (transformed as any)[column.propertyKey];

@@ -1,31 +1,21 @@
 import { getEntityMetadata, saveEntityMetadata } from '../core/EntityMetadata';
 
 export function BeforeSave() {
-    return (value: Function, context: ClassMethodDecoratorContext) => {
-        context.addInitializer(function() {
-            const constructor = (this as Function).constructor;
-            const metadata = getEntityMetadata(constructor);
+    return <T>(target: Object, propertyKey: string | symbol, descriptor: TypedPropertyDescriptor<(entity: Partial<T>) => Partial<T>>) => {
+        const constructor = target.constructor;
+        const metadata = getEntityMetadata(constructor);
+        metadata.transformHooks.beforeSave = descriptor.value;
 
-            metadata.transformHooks.beforeSave = (entity: any) => {
-                return value.call(entity);
-            };
-
-            saveEntityMetadata(constructor, metadata);
-        });
+        saveEntityMetadata(constructor, metadata);
     };
 }
 
 export function AfterLoad() {
-    return (value: Function, context: ClassMethodDecoratorContext) => {
-        context.addInitializer(function() {
-            const constructor = (this as Function).constructor;
-            const metadata = getEntityMetadata(constructor);
+    return <T>(target: Object, propertyKey: string | symbol, descriptor: TypedPropertyDescriptor<(entity: T) => T>) => {
+        const constructor = target.constructor;
+        const metadata = getEntityMetadata(constructor);
+        metadata.transformHooks.afterLoad = descriptor.value;
 
-            metadata.transformHooks.afterLoad = (entity: any) => {
-                return value.call(entity);
-            };
-
-            saveEntityMetadata(constructor, metadata);
-        });
+        saveEntityMetadata(constructor, metadata);
     };
 }
