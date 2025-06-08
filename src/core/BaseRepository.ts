@@ -14,10 +14,10 @@ import {
     type QueryParam,
     type QueryParams,
     type TransformHooks,
-    type TrashedFindOptions,
     type WhereClause,
 } from '../types/common';
 import { getEntityMetadata } from './EntityMetadata';
+import type { DeletedFindOptions } from './SoftDelete';
 
 export class BaseRepository<T extends object> {
     constructor(
@@ -72,7 +72,7 @@ export class BaseRepository<T extends object> {
         return null;
     }
 
-    renderWhereClauses(where: WhereClause<T>, options?: TrashedFindOptions): [string[], QueryParams] {
+    renderWhereClauses(where: WhereClause<T>, options?: DeletedFindOptions): [string[], QueryParams] {
         const whereClauses: string[] = [];
         const whereValues: QueryParams = [];
         const metadata = this.metadata;
@@ -159,9 +159,9 @@ export class BaseRepository<T extends object> {
         return await this.findOne({ [primaryColumn.propertyKey]: primaryValue } as WhereClause<T>);
     }
 
-    async update(where: WhereClause<T> | T, updates?: Partial<T>, options?: TrashedFindOptions): Promise<T | number>;
+    async update(where: WhereClause<T> | T, updates?: Partial<T>, options?: DeletedFindOptions): Promise<T | number>;
     async update(where: T): Promise<T>;
-    async update(where: WhereClause<T> | T, updates?: Partial<T>, options?: TrashedFindOptions): Promise<T | number> {
+    async update(where: WhereClause<T> | T, updates?: Partial<T>, options?: DeletedFindOptions): Promise<T | number> {
         const metadata = this.metadata;
         const isInstance = where instanceof this.entityClass;
         const entity = isInstance ? where as T : {} as T;

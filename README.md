@@ -7,12 +7,13 @@ A TypeScript-first, decorator-based ORM for MySQL with built-in support for rela
 - 🎯 **TypeScript-first** with full type safety
 - 🏷️ **Decorator-based** entity definitions
 - 🔗 **Relationship support** (OneToOne, OneToMany, ManyToOne, ManyToMany)
-- 🗑️ **Soft delete** functionality
+- 🗑️ **Soft delete** functionality with mixin support
 - 🔄 **Data transformations** with hooks
 - 💾 **Transaction support**
 - 🔍 **Advanced query operators** ($eq, $ne, $gt, $in, $like, $between, etc.)
 - 📊 **Connection pooling** with mysql2
 - 🐛 **Debug mode** with query logging
+- 🧩 **Utility Mixins** for JSON serialization and soft delete behavior
 
 ## Installation
 
@@ -372,8 +373,89 @@ console.log(user.posts); // Post[]
 // Include soft deleted records
 const allUsers = await userRepo.find({}, { withDeleted: true });
 
+// Filter for only soft-deleted records using deleted method
+const deletedUsers = await userRepo.find({}, { withDeleted: true });
+
 // Restore soft deleted record
 await userRepo.restore({ id: 1 });
+```
+
+### Using Mixins
+
+Mixins provide additional functionality that can be composed into your entity classes.
+
+#### SoftDelete Mixin
+
+The `SoftDelete` mixin adds soft delete functionality to your entities without requiring the `@Entity({ softDelete: true })` configuration.
+
+```typescript
+import { Entity, Column, SoftDelete } from 'lightweight-mysql-orm';
+
+@Entity({ tableName: 'products', softDelete: true, softDeleteColumn: 'deleted_at' })
+export class Product extends SoftDelete {
+    @Column({ primary: true, type: 'number' })
+    id: number;
+    
+    @Column({ type: 'string' })
+    name: string;
+    
+    // The SoftDelete mixin automatically adds:
+    // - deleted_at column handling
+    // - deleted() method to check if entity is soft-deleted
+}
+
+// Usage
+const product = await productRepo.findOne({ id: 1 });
+console.log(product.deleted()); // false
+await productRepo.delete(product);
+```
+
+#### JsonSerialize Mixin
+
+The `JsonSerialize` mixin provides enhanced JSON serialization with control over which properties are included in the JSON output.
+
+```typescript
+import { Entity, Column, JsonSerialize } from 'lightweight-mysql-orm';
+
+@Entity({ tableName: 'users' })
+export class User extends JsonSerialize {
+    @Column({ primary: true, type: 'number' })
+    id: number;
+    
+    @Column({ type: 'string' })
+    name: string;
+    
+    // Set which property to exclude from JSON
+    @Column({ type: 'string', hide: true })
+    password: string;
+}
+
+// Usage
+const user = await userRepo.findOne({ id: 1 });
+console.log(JSON.stringify(user)); // Password will be excluded
+```
+
+### Combining Mixins
+
+You can combine multiple mixins using TypeScript's mixin pattern:
+
+```typescript
+import { Entity, Column, SoftDelete, JsonSerialize, appmixinslyMixins } from 'lightweight-mysql-orm';
+
+// Now create your entity extending from the composed base
+@Entity({ tableName: 'users' })
+export class User extends mixins(SoftDelete, JsonSerialize) {
+    @Column({ primary: true, type: 'number' })
+    id: number;
+    
+    @Column({ type: 'string' })
+    name: string;
+    
+    @Column({ type: 'string' })
+    password: string;
+}
+
+// The User entity now has both JsonSerialize and SoftDelete functionality
 ```
 
 ## Requirements

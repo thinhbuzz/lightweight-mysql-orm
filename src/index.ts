@@ -13,9 +13,14 @@ export * from './decorators/ManyToMany';
 // Export core functionality
 export * from './core/BaseRepository';
 export * from './core/EntityMetadata';
+export * from './core/SoftDelete';
+export * from './core/JsonSerialize';
 
 // Export configuration
 export * from './config/db';
 
 // Export transaction management
 export * from './transaction/transaction';
+
+// Export utility functions
+export * from './utilities/mixins';

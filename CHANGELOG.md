@@ -9,10 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+## [1.1.3] - 2025-06-08
+
+### Added
+- Implement JsonSerialize and SoftDelete classes for JSON serialization and soft delete support
+
 ## [1.1.2] - 2025-06-08
 
 ### Added
-- Add trashed method for soft delete support in entities
+- Add deleted method for soft delete support in entities
 
 ## [1.1.1] - 2025-06-08
 

@@ -1,4 +1,5 @@
 import type { Pool, PoolConnection } from 'mysql2/promise';
+import type { DeletedFindOptions } from '../core/SoftDelete';
 
 export type Connection = Pool | PoolConnection;
 export type QueryResult = any;
@@ -146,13 +147,8 @@ export class ORMError extends Error {
 }
 
 export type RelationFindOptions<T> = { relations?: FieldKeys<T>[] };
-export type TrashedFindOptions = { withDeleted?: boolean };
-export type FindOptions<T> = RelationFindOptions<T> & TrashedFindOptions;
+export type FindOptions<T> = RelationFindOptions<T> & DeletedFindOptions;
 
 export interface JsonSerializable {
     toJSON(): Record<string, any>;
-}
-
-export interface SoftDelete {
-    trashed(): boolean;
 }
