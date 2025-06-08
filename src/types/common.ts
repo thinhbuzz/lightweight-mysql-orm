@@ -4,7 +4,7 @@ import type { DeletedFindOptions } from '../core/SoftDelete';
 export type Connection = Pool | PoolConnection;
 export type QueryResult = any;
 export type QueryParam = string | number | boolean | null | Date;
-export type QueryParams = (QueryParam)[] & QueryParam[][];
+export type QueryParams = (QueryParam | QueryParam[] | (QueryParam | QueryParam[]))[];
 
 export interface EntityMetadata {
     tableName: string;

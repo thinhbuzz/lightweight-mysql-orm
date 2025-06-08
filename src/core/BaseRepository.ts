@@ -113,11 +113,11 @@ export class BaseRepository<T extends object> {
 
         const whereClause = this.renderWhereClaude(whereClauses);
         const selectColumns = this.renderSelectColumns(whereValues);
-        const limit = options.limit ? ` LIMIT ?` : '';
+        const limit = options.limit! >= 0 ? ` LIMIT ?` : '';
         if (limit) {
             whereValues.push(options.limit as QueryParam);
         }
-        const offset = options.offset ? ` OFFSET ?` : '';
+        const offset = options.offset! >= 0 ? ` OFFSET ?` : '';
         if (offset) {
             whereValues.push(options.offset as QueryParam);
         }
@@ -141,7 +141,7 @@ export class BaseRepository<T extends object> {
         const columns = [];
         const placeholders = [];
         const values: QueryParams = [];
-        const columnNames: QueryParams = [];
+        const columnNames: QueryParams = [metadata.tableName];
 
         for (const [columnName, value] of Object.entries(dbObject)) {
             columns.push('??');
@@ -150,7 +150,6 @@ export class BaseRepository<T extends object> {
             values.push(value as QueryParam);
         }
 
-        columnNames.unshift(metadata.tableName);
         const sql = `INSERT INTO ?? (${columns.join(', ')}) VALUES (${placeholders.join(', ')})`;
         const result = await this.query(sql, columnNames.concat(values) as QueryParams) as ResultSetHeader;
         const newValue = await this.findByPrimaryValue(result.insertId);
@@ -196,9 +195,8 @@ export class BaseRepository<T extends object> {
         const [whereClauses, whereValues] = this.renderWhereClauses(where, options);
         const whereClause = this.renderWhereClaude(whereClauses);
 
-        whereValues.unshift(metadata.tableName);
         const sql = `UPDATE ?? SET ${setClauses.join(', ')} ${whereClause}`;
-        const result = await this.query(sql, [...setValues, ...whereValues]) as ResultSetHeader;
+        const result = await this.query(sql, [...[metadata.tableName] as QueryParams, ...setValues, ...whereValues]) as ResultSetHeader;
         if (result.affectedRows === 1 && isInstance) {
             const updatedEntity = await this.findOne(where, options);
             if (updatedEntity) {
@@ -319,7 +317,7 @@ export class BaseRepository<T extends object> {
                         dbValue = JSON.stringify(value);
                         break;
                     case 'boolean':
-                        dbValue = value ? 1 : 0;
+                        dbValue = !!value ? 1 : 0;
                         break;
                 }
             }

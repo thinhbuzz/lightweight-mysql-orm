@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+## [1.1.7] - 2025-06-08
+
+### Added
+- feat: enhance query builder with improved limit and offset handling
+- fix: update query
+- fix: QueryParams type
+
 ## [1.1.6] - 2025-06-08
 
 ### Added
