@@ -378,7 +378,7 @@ await userRepo.restore({ id: 1 });
 
 ## Requirements
 
-- Node.js 20+
+- Bun 1+ or Node.js 20+
 - TypeScript 5.8+
 - MySQL 5.7+ or 8.0+
 
