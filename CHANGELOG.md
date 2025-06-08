@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+## [1.1.2] - 2025-06-08
+
+### Added
+- Add trashed method for soft delete support in entities
+
+## [1.1.1] - 2025-06-08
+
+### Added
+- Expose lib options
+
 ## [1.1.0] - 2025-06-04
 
 ### Added
