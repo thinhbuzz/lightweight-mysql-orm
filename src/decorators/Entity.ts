@@ -9,7 +9,7 @@ export interface EntityOptions {
 
 export const Entity = (options: EntityOptions): ClassDecorator => {
     return (target: Function) => {
-        if (!('toJSON' in target)) {
+        if (!('toJSON' in target.prototype)) {
             target.prototype.toJSON = function () {
                 const metadata: EntityMetadata = getEntityMetadata(target);
                 const json: Record<string, any> = {};
@@ -31,6 +31,12 @@ export const Entity = (options: EntityOptions): ClassDecorator => {
         metadata.tableName = options.tableName;
         metadata.softDelete = metadata.softDelete ?? options.softDelete ?? !!options.softDeleteColumn;
         metadata.softDeleteColumn = metadata.softDeleteColumn ?? options.softDeleteColumn ?? (options.softDelete ? 'deleted_at' : undefined);
+        if (metadata.softDelete && !('trashed' in target.prototype)) {
+            target.prototype.trashed = function () {
+                const deletedAt = this[metadata.softDeleteColumn!];
+                return deletedAt !== null && deletedAt !== undefined;
+            };
+        }
         saveEntityMetadata(target, metadata);
     };
 };

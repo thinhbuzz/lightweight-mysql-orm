@@ -152,3 +152,7 @@ export type FindOptions<T> = RelationFindOptions<T> & TrashedFindOptions;
 export interface JsonSerializable {
     toJSON(): Record<string, any>;
 }
+
+export interface SoftDelete {
+    trashed(): boolean;
+}
