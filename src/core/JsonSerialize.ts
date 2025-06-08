@@ -5,6 +5,13 @@ export interface IJsonSerializable {
     toJSON(): Record<string, any>;
 }
 
+export function callToSJSON(object?: Partial<IJsonSerializable>) {
+    if (!object) {
+        return object;
+    }
+    return object.toJSON ? object.toJSON() : object;
+}
+
 export class JsonSerialize {
     toJSON() {
         const metadata: EntityMetadata = getEntityMetadata(this.constructor);
@@ -17,7 +24,7 @@ export class JsonSerialize {
         metadata.relations.forEach(relation => {
             if (!relation.hidden) {
                 const instance = this[relation.propertyKey as keyof this] as JsonSerializable | JsonSerializable[] | undefined;
-                json[relation.propertyKey] = Array.isArray(instance) ? instance.map((item) => item.toJSON()) : instance?.toJSON();
+                json[relation.propertyKey] = Array.isArray(instance) ? instance.map((item) => callToSJSON(item)) : callToSJSON(instance);
             }
         });
         return json;
