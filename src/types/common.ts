@@ -48,7 +48,7 @@ export interface BaseRelationMetadata {
 export interface OneToOneRelationMetadata extends BaseRelationMetadata {
     type: 'OneToOne';
     foreignKey?: string;
-    inverseSide?: string; // Optional, as it might be the owner or not
+    localKey?: string; // Optional, as it might be the owner or not
 }
 
 // Specific metadata for OneToMany

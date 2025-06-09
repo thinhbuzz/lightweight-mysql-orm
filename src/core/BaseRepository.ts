@@ -360,26 +360,27 @@ export class BaseRepository<T extends object> {
         const targetMetadata = getEntityMetadata(TargetClass);
         if (!targetMetadata) return;
 
-        const primaryKey = this.metadata.columns.find(c => c.primary);
-        if (!primaryKey) return;
+        const targetPrimaryColumn = targetMetadata.columns.find(c => c.primary);
+        const localKey = relation.localKey || targetPrimaryColumn?.propertyKey || `${targetMetadata.tableName}_id`;
 
-        const foreignKey = relation.foreignKey || `${this.metadata.tableName}_id`;
+        const primaryColumn = this.metadata.columns.find(c => c.primary);
+        const foreignKey = relation.foreignKey || primaryColumn?.propertyKey || `${this.metadata.tableName}_id`;
 
         const repo = new BaseRepository(this.connection, TargetClass as new () => object);
-        const ids = entities.map(e => (e as any)[primaryKey.propertyKey]);
+        const ids = entities.map(e => (e as any)[foreignKey]);
 
         const relatedEntities = await repo.find(Object.assign({
-            [foreignKey]: { $in: ids },
+            [localKey]: { $in: ids },
         }, relation.where || {}));
 
         const map = new Map<any, any>();
         for (const entity of relatedEntities) {
-            const fkValue = (entity as any)[foreignKey];
+            const fkValue = (entity as any)[localKey];
             map.set(fkValue, entity);
         }
 
         for (const entity of entities) {
-            const id = (entity as any)[primaryKey.propertyKey];
+            const id = (entity as any)[foreignKey];
             (entity as any)[relation.propertyKey] = map.get(id) || null;
         }
     }

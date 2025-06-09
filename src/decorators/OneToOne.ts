@@ -3,7 +3,7 @@ import type { WhereClause } from '../types/common';
 
 export interface OneToOneOptions<T> {
     foreignKey?: string;
-    inverseSide?: string;
+    localKey?: string;
     hidden?: boolean;
     where?: WhereClause<T>;
 }
@@ -20,7 +20,7 @@ export const OneToOne = <T>(
             type: 'OneToOne',
             target,
             foreignKey: options.foreignKey,
-            inverseSide: options.inverseSide,
+            localKey: options.localKey,
             where: options.where,
             hidden: options.hidden ?? false,
         });

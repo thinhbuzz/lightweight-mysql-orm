@@ -69,7 +69,7 @@ export const createRelationMetadata = (
                 hidden,
                 where,
                 foreignKey: relationData.foreignKey,
-                inverseSide: relationData.inverseSide,
+                localKey: relationData.localKey,
             } as OneToOneRelationMetadata;
         case 'OneToMany':
             return {
