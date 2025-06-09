@@ -145,12 +145,22 @@ export class ORMError extends Error {
     }
 }
 
-// Optimized relation types for better performance and type inference
+// Enhanced query and relation types with orderBy and select support
 export type DotNotationRelation<T> = `${string & FieldKeys<T>}.${string}`;
+
+export type OrderDirection = 'ASC' | 'DESC' | 'asc' | 'desc';
+
+export type OrderByClause<T> = {
+    [K in FieldKeys<T>]?: OrderDirection;
+} | FieldKeys<T>[] | string[];
+
+export type SelectClause<T> = FieldKeys<T>[] | string[];
 
 export type RelationConfig<T = any> = {
     relations?: RelationSpec<T>[];
     where?: WhereClause<T>;
+    orderBy?: OrderByClause<T>;
+    select?: SelectClause<T>;
     limit?: number;
     offset?: number;
 };
@@ -167,9 +177,24 @@ export type RelationSpec<T = any> =
 export type RelationFindOptions<T> = { 
     relations?: RelationSpec<T>[];
 };
-export type OffsetLimitOptions = { offset?: number; limit?: number };
-export type FindOneOptions<T> = RelationFindOptions<T> & DeletedFindOptions;
-export type FindOptions<T> = FindOneOptions<T> & OffsetLimitOptions;
+
+export type OrderByOptions<T> = { 
+    orderBy?: OrderByClause<T>;
+};
+
+export type SelectOptions<T> = { 
+    select?: SelectClause<T>;
+};
+
+export type OffsetLimitOptions = { 
+    offset?: number; 
+    limit?: number; 
+};
+
+export type QueryOptions<T> = OrderByOptions<T> & SelectOptions<T> & OffsetLimitOptions;
+
+export type FindOneOptions<T> = RelationFindOptions<T> & QueryOptions<T> & DeletedFindOptions;
+export type FindOptions<T> = FindOneOptions<T>;
 
 export interface JsonSerializable {
     toJSON(): Record<string, any>;

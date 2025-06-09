@@ -11,6 +11,7 @@ import {
     type OneToManyRelationMetadata,
     type OneToOneRelationMetadata,
     operatorQueryMap,
+    type OrderByClause,
     ORMError,
     type QueryOperator,
     type QueryParam,
@@ -18,6 +19,7 @@ import {
     type RelationConfig,
     type RelationMetadata,
     type RelationSpec,
+    type SelectClause,
     type TransformHooks,
     type WhereClause,
 } from '../types/common';
@@ -50,9 +52,21 @@ export class BaseRepository<T extends object> {
         return rows;
     }
 
-    renderSelectColumns(whereValues: QueryParams): string {
+    renderSelectColumns(whereValues: QueryParams, select?: SelectClause<T>): string {
         const metadata = this.metadata;
-        const columns = metadata.columns.map(c => c.columnName);
+        let columns: string[];
+
+        if (select && select.length > 0) {
+            // Filter columns based on select clause
+            columns = select.map(field => {
+                const column = metadata.columns.find(c => c.propertyKey === field || c.columnName === field);
+                return column ? column.columnName : field as string;
+            });
+        } else {
+            // Use all columns
+            columns = metadata.columns.map(c => c.columnName);
+        }
+
         whereValues.unshift(metadata.tableName);
         whereValues.unshift(...columns);
         return columns.map(() => '??').join(', ');
@@ -61,10 +75,13 @@ export class BaseRepository<T extends object> {
     async findOne(where: WhereClause<T>, options: FindOneOptions<T> = {}): Promise<T | null> {
         const [whereClauses, whereValues] = this.renderWhereClauses(where, options);
         const whereClause = this.renderWhereClaude(whereClauses);
-        const selectColumns = this.renderSelectColumns(whereValues);
+        const selectColumns = this.renderSelectColumns(whereValues, options.select);
 
-        const sql = `SELECT ${selectColumns} FROM ?? ${whereClause} LIMIT 1`;
-        const rows = await this.query(sql, whereValues) as T[];
+        const orderValues: QueryParams = [];
+        const orderByClause = this.renderOrderByClause(options.orderBy, orderValues);
+
+        const sql = `SELECT ${selectColumns} FROM ?? ${whereClause}${orderByClause} LIMIT 1`;
+        const rows = await this.query(sql, [...whereValues, ...orderValues]) as T[];
 
         if (Array.isArray(rows) && rows.length > 0) {
             const entity = this.mapToEntity(rows[0] as T);
@@ -112,21 +129,58 @@ export class BaseRepository<T extends object> {
         return whereClauses.length > 0 ? `${prefix} ${whereClauses.join(' AND ')}` : '';
     }
 
+    renderOrderByClause(orderBy: OrderByClause<T> | undefined, orderValues: QueryParams): string {
+        if (!orderBy) return '';
+
+        const metadata = this.metadata;
+        const orderClauses: string[] = [];
+
+        if (Array.isArray(orderBy)) {
+            // Handle array format: ['field1', 'field2']
+            for (const field of orderBy) {
+                const column = metadata.columns.find(c => c.propertyKey === field || c.columnName === field);
+                if (column) {
+                    orderClauses.push('?? ASC');
+                    orderValues.push(column.columnName);
+                }
+            }
+        } else if (typeof orderBy === 'object') {
+            // Handle object format: { field1: 'DESC', field2: 'ASC' }
+            for (const [field, direction] of Object.entries(orderBy)) {
+                const column = metadata.columns.find(c => c.propertyKey === field || c.columnName === field);
+                if (column && direction && typeof direction === 'string') {
+                    orderClauses.push(`?? ${direction.toUpperCase()}`);
+                    orderValues.push(column.columnName);
+                }
+            }
+        }
+
+        return orderClauses.length > 0 ? ` ORDER BY ${orderClauses.join(', ')}` : '';
+    }
+
     async find(where: WhereClause<T>, options: FindOptions<T> = {}): Promise<T[]> {
         const [whereClauses, whereValues] = this.renderWhereClauses(where, options);
-
         const whereClause = this.renderWhereClaude(whereClauses);
-        const selectColumns = this.renderSelectColumns(whereValues);
+        const selectColumns = this.renderSelectColumns(whereValues, options.select);
+
+        const orderValues: QueryParams = [];
+        const orderByClause = this.renderOrderByClause(options.orderBy, orderValues);
+
         const limit = options.limit! >= 0 ? ` LIMIT ?` : '';
-        if (limit) {
-            whereValues.push(options.limit as QueryParam);
-        }
         const offset = options.offset! >= 0 ? ` OFFSET ?` : '';
-        if (offset) {
-            whereValues.push(options.offset as QueryParam);
+
+        // Build final parameter array
+        const finalParams = [...whereValues, ...orderValues];
+        if (limit) {
+            finalParams.push(options.limit as QueryParam);
         }
-        const sql = `SELECT ${selectColumns} FROM ?? ${whereClause}${limit}${offset}`;
-        const rows = await this.query(sql, whereValues) as T[];
+        if (offset) {
+            finalParams.push(options.offset as QueryParam);
+        }
+
+        const sql = `SELECT ${selectColumns} FROM ?? ${whereClause}${orderByClause}${limit}${offset}`;
+        const rows = await this.query(sql, finalParams) as T[];
+
         if (Array.isArray(rows)) {
             const entities = rows.map(row => this.mapToEntity(row));
             if (options.relations) {
@@ -438,6 +492,8 @@ export class BaseRepository<T extends object> {
         const findOptions: any = {};
         if (options?.limit) findOptions.limit = options.limit;
         if (options?.offset) findOptions.offset = options.offset;
+        if (options?.orderBy) findOptions.orderBy = options.orderBy;
+        if (options?.select) findOptions.select = options.select;
         return findOptions;
     }
 
