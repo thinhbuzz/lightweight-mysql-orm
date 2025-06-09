@@ -97,6 +97,7 @@ export class BaseRepository<T extends object> {
             if (options.relations) {
                 await this.loadRelations([entity], options.relations);
             }
+            await this.applyAfterLoadHook(entity, this._metadata.transformHooks);
             return entity;
         }
 
@@ -205,6 +206,9 @@ export class BaseRepository<T extends object> {
             if (options.relations) {
                 await this.loadRelations(entities, options.relations);
             }
+            if (this._metadata.transformHooks.afterLoad) {
+                await Promise.all(entities.map(entity => this.applyAfterLoadHook(entity, this._metadata.transformHooks)));
+            }
             return entities;
         }
 
@@ -212,7 +216,7 @@ export class BaseRepository<T extends object> {
     }
 
     async create(entity: Partial<T> | T): Promise<T | number> {
-        const dbObject = this.mapToDB(entity);
+        const dbObject = await this.mapToDB(entity);
 
         const columns = [];
         const placeholders = [];
@@ -255,7 +259,7 @@ export class BaseRepository<T extends object> {
                 where = { [this._primaryKey.columnName]: (where as T)[this._primaryKey.propertyKey as keyof T] } as WhereClause<T>;
             }
         }
-        const updateDbObject = this.mapToDB(updates!);
+        const updateDbObject = await this.mapToDB(updates!);
 
         const setClauses: QueryParams = [];
         const setValues: QueryParams = [];
@@ -314,9 +318,9 @@ export class BaseRepository<T extends object> {
         return this.update(where, { [this._metadata.softDeleteColumn!]: null } as Partial<T>, { withDeleted: true });
     }
 
-    private applyBeforeSaveHook(entity: Partial<T>, hooks: TransformHooks<T>): Partial<T> {
+    private async applyBeforeSaveHook(entity: Partial<T>, hooks: TransformHooks<T>): Promise<Partial<T>> {
         if (hooks.beforeSave) {
-            const value = hooks.beforeSave(entity);
+            const value = await hooks.beforeSave.call(entity, entity);
             if (value) {
                 return value;
             }
@@ -324,9 +328,9 @@ export class BaseRepository<T extends object> {
         return entity;
     }
 
-    private applyAfterLoadHook(entity: T, hooks: TransformHooks<T>): Partial<T> {
+    private async applyAfterLoadHook(entity: T, hooks: TransformHooks<T>): Promise<Partial<T>> {
         if (hooks.afterLoad) {
-            const value = hooks.afterLoad(entity);
+            const value = await hooks.afterLoad.apply(entity);
             if (value) {
                 return value;
             }
@@ -368,12 +372,12 @@ export class BaseRepository<T extends object> {
             entity[propertyKey as keyof T] = value;
         }
 
-        return this.applyAfterLoadHook(entity, this._metadata.transformHooks) as T;
+        return entity;
     }
 
-    private mapToDB(entity: Partial<T>): any {
+    private async mapToDB(entity: Partial<T>): Promise<any> {
         const dbObject: any = {};
-        const transformed = this.applyBeforeSaveHook(entity, this._metadata.transformHooks);
+        const transformed = await this.applyBeforeSaveHook(entity, this._metadata.transformHooks);
 
         for (const [propertyKey, value] of Object.entries(transformed)) {
             const column = this._columnMap.get(propertyKey);
@@ -671,18 +675,21 @@ export class BaseRepository<T extends object> {
         const map = new Map<any, T[]>();
         entities.forEach(entity => map.set((entity as T)[this._primaryKey!.propertyKey as keyof T], []));
 
-        for (const row of relatedEntitiesRaw) {
-            const sourceEntityFkValue = row[coreOptions.sourceEntityIdAlias as keyof T];
-            const targetEntity = targetRepository.mapToEntity(row) as T; // mapToEntity will ignore the alias column
-
-            if (map.has(sourceEntityFkValue)) {
-                const existingRelations = map.get(sourceEntityFkValue)!;
-                // Add if not already present (safeguard, DISTINCT should mostly handle this)
-                if (!existingRelations.some(ex => (ex as any)[targetRepository._primaryKey!.propertyKey] === (targetEntity as any)[targetRepository._primaryKey!.propertyKey])) {
-                    existingRelations.push(targetEntity);
-                }
-            }
-        }
+        await Promise.all(
+            relatedEntitiesRaw.map(async row => {
+                    const sourceEntityFkValue = row[coreOptions.sourceEntityIdAlias as keyof T];
+                    if (map.has(sourceEntityFkValue)) {
+                        const targetEntity = targetRepository.mapToEntity(row) as T; // mapToEntity will ignore the alias column
+                        await this.applyAfterLoadHook(targetEntity, targetRepository._metadata.transformHooks);
+                        const existingRelations = map.get(sourceEntityFkValue)!;
+                        // Add if not already present (safeguard, DISTINCT should mostly handle this)
+                        if (!existingRelations.some(ex => (ex as any)[targetRepository._primaryKey!.propertyKey] === (targetEntity as any)[targetRepository._primaryKey!.propertyKey])) {
+                            existingRelations.push(targetEntity);
+                        }
+                    }
+                },
+            ),
+        );
 
         // Assign relationships to entities
         for (const entity of entities) {

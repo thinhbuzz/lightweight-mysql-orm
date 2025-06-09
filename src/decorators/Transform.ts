@@ -11,7 +11,7 @@ export function BeforeSave() {
 }
 
 export function AfterLoad() {
-    return <T>(target: Object, propertyKey: string | symbol, descriptor: TypedPropertyDescriptor<(entity: T) => T>) => {
+    return <T>(target: Object, _: string | symbol, descriptor: TypedPropertyDescriptor<(this: T) => T>) => {
         const constructor = target.constructor;
         const metadata = getEntityMetadata(constructor);
         metadata.transformHooks.afterLoad = descriptor.value;

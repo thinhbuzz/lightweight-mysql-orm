@@ -31,8 +31,8 @@ export type ColumnType =
     | 'json';
 
 export interface TransformHooks<T> {
-    beforeSave?: (entity: Partial<T>) => Partial<T>;
-    afterLoad?: (entity: T) => T;
+    beforeSave?: (entity: Partial<T>) => Partial<T> | void | Promise<Partial<T> | void>;
+    afterLoad?: (this: T) => T | void | Promise<T | void>;
 }
 
 // Base interface for all relations
