@@ -316,14 +316,20 @@ export class BaseRepository<T extends object> {
 
     private applyBeforeSaveHook(entity: Partial<T>, hooks: TransformHooks<T>): Partial<T> {
         if (hooks.beforeSave) {
-            entity = hooks.beforeSave(entity);
+            const value = hooks.beforeSave(entity);
+            if (value) {
+                return value;
+            }
         }
         return entity;
     }
 
     private applyAfterLoadHook(entity: T, hooks: TransformHooks<T>): Partial<T> {
         if (hooks.afterLoad) {
-            entity = hooks.afterLoad(entity);
+            const value = hooks.afterLoad(entity);
+            if (value) {
+                return value;
+            }
         }
         return entity;
     }
