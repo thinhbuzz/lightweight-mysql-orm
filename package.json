@@ -1,7 +1,7 @@
 {
   "name": "lightweight-mysql-orm",
   "description": "A TypeScript-first, decorator-based ORM for MySQL with support for relationships, soft deletes, transformations, and transactions",
-  "version": "1.1.8",
+  "version": "1.1.9",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -41,6 +41,7 @@
     "mysql2": "^3.14.1"
   },
   "scripts": {
+    "test": "bun test",
     "build": "tsc",
     "clean": "rm -rf dist",
     "prepublishOnly": "npm run clean && npm run build",
