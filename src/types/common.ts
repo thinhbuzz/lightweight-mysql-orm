@@ -94,8 +94,7 @@ export const supportedQueryOperators = {
     $between: '$between',
     $notBetween: '$notBetween',
     $isNull: '$isNull',
-    $exists: '$exists',
-    $notExists: '$notExists',
+    $isNotNull: '$isNotNull',
 } as const;
 export type QueryOperator = keyof typeof supportedQueryOperators;
 
@@ -111,8 +110,7 @@ export const operatorQueryMap: Record<QueryOperator, [operator: string, valuePla
     [supportedQueryOperators.$between]: ['BETWEEN', ['? ', 'AND', ' ?']],
     [supportedQueryOperators.$notBetween]: ['NOT BETWEEN', ['? ', 'AND', ' ?']],
     [supportedQueryOperators.$isNull]: ['IS NULL'],
-    [supportedQueryOperators.$exists]: ['EXISTS', ['(?)']],
-    [supportedQueryOperators.$notExists]: ['NOT EXISTS', ['(?)']],
+    [supportedQueryOperators.$isNotNull]: ['IS NOT NULL'],
 };
 
 export type OperatorMap<T, Op extends QueryOperator> =
@@ -120,7 +118,7 @@ export type OperatorMap<T, Op extends QueryOperator> =
         Op extends '$in' ? T[] :
             Op extends '$like' ? (T extends string ? string : never) :
                 Op extends '$between' | '$notBetween' ? [T, T] :
-                    Op extends '$isNull' | '$exists' | '$notExists' ? boolean :
+                    Op extends '$isNull' | '$isNotNull' ? true :
                         never;
 
 export type AllowedOperators<T> = {
@@ -133,10 +131,6 @@ export type WhereFieldClause<T> = T | AllowedOperators<T>;
 export type WhereClause<T> = {
     [P in keyof T]?: WhereFieldClause<T[P]>;
 };
-
-export function where<T>(whereClause: WhereClause<T>): WhereClause<T> {
-    return whereClause;
-}
 
 // Enhanced query and relation types with orderBy and select support
 export type DotNotationRelation<T> = `${string & FieldKeys<T>}.${string}`;

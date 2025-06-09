@@ -1,5 +1,6 @@
 // Export all types
 export * from './types/common';
+export * from './types/errors';
 
 // Export all decorators
 export * from './decorators/Entity';
@@ -24,3 +25,5 @@ export * from './transaction/transaction';
 
 // Export utility functions
 export * from './utilities/mixins';
+export * from './utilities/object';
+export * from './utilities/query';

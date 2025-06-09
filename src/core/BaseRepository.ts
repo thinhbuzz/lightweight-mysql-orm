@@ -116,13 +116,15 @@ export class BaseRepository<T extends object> {
                     if (!operator) {
                         throw new UnsupportedQueryOperatorError(operatorKey);
                     }
-                    whereClauses.push(`?? ${operator} ${valuePlaceholders ? valuePlaceholders.join(' ') : '?'}`);
+                    whereClauses.push(`?? ${operator}${valuePlaceholders ? [' '].concat(valuePlaceholders).join(' ') : ''}`);
                     whereValues.push(column.columnName);
                     const whereValue = (operatorOrValue as object)[operatorKey as keyof typeof operatorOrValue];
-                    if ((valuePlaceholders?.length || 0) > 1) {
-                        whereValues.push(...(whereValue as QueryParam[]));
-                    } else {
-                        whereValues.push(whereValue);
+                    if (valuePlaceholders) {
+                        if ((valuePlaceholders.length || 0) > 1) {
+                            whereValues.push(...(whereValue as QueryParam[]));
+                        } else {
+                            whereValues.push(whereValue);
+                        }
                     }
                 });
             } else {
