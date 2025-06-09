@@ -7,7 +7,7 @@ export class ORMError extends Error {
 
 export class EntityMetadataNotFoundError extends ORMError {
     constructor(entityName: string) {
-        super(`Entity metadata not found for ${entityName}`);
+        super(`Metadata not found for entity "${entityName}".`);
         this.name = 'EntityMetadataNotFoundError';
     }
 }
@@ -21,14 +21,14 @@ export class ColumnNotFoundError extends ORMError {
 
 export class UnsupportedQueryOperatorError extends ORMError {
     constructor(operator: string) {
-        super(`Unsupported query operator: "${operator}".`);
+        super(`Query operator "${operator}" is not supported.`);
         this.name = 'UnsupportedQueryOperatorError';
     }
 }
 
 export class SoftDeleteNotSupportedError extends ORMError {
     constructor(entityName: string) {
-        super(`Entity "${entityName}" does not support soft delete restoration.`);
+        super(`Soft delete is not supported for entity "${entityName}".`);
         this.name = 'SoftDeleteNotSupportedError';
     }
 }
