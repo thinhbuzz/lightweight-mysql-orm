@@ -116,6 +116,8 @@ export class BaseRepository<T extends object> {
                         whereValues.push(whereValue);
                     }
                 });
+            } else {
+                throw new ORMError(`Column ${key} not found in entity ${this.entityClass.name}`);
             }
         }
         if (!options?.withDeleted && metadata.softDelete && metadata.softDeleteColumn) {
