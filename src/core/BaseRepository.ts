@@ -73,7 +73,7 @@ export class BaseRepository<T extends object> {
             });
         } else {
             // Use all columns
-            columns = this._columnMap.keys().toArray();
+            columns = this._metadata.columns.map(c => c.columnName);
         }
 
         whereValues.unshift(this._metadata.tableName);
