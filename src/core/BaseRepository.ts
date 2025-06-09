@@ -273,7 +273,7 @@ export class BaseRepository<T extends object> {
         const whereClause = this.renderWhereClaude(whereClauses);
 
         const sql = `UPDATE ?? SET ${setClauses.join(', ')} ${whereClause}`;
-        const result = await this.query(sql, [...[this._metadata.tableName] as QueryParams, ...setValues, ...whereValues]) as ResultSetHeader;
+        const result = await this.query(sql, [this._metadata.tableName, ...setValues, ...whereValues]) as ResultSetHeader;
         if (result.affectedRows === 1 && isInstance) {
             const updatedEntity = await this.findOne(where, options);
             if (updatedEntity) {
@@ -288,9 +288,13 @@ export class BaseRepository<T extends object> {
     async delete(where: T): Promise<T>;
     async delete(where: WhereClause<T> | T): Promise<T | number> {
         if (this._metadata.softDelete) {
+            const deletedColumn = this.getPropertyKeyColumnByColumnName(this._metadata, this._metadata.softDeleteColumn);
+            if (!deletedColumn) {
+                throw new ColumnNotFoundError(this._metadata.softDeleteColumn!, this.entityClass.name);
+            }
             return await this.update(
                 where as WhereClause<T> | T,
-                { [this._metadata.softDeleteColumn!]: new Date() } as Partial<T>,
+                { [deletedColumn]: new Date() } as Partial<T>,
                 { withDeleted: true },
             );
         }
@@ -315,7 +319,11 @@ export class BaseRepository<T extends object> {
         if (!this._metadata.softDelete) {
             throw new SoftDeleteNotSupportedError(this.entityClass.name);
         }
-        return this.update(where, { [this._metadata.softDeleteColumn!]: null } as Partial<T>, { withDeleted: true });
+        const deletedColumn = this.getPropertyKeyColumnByColumnName(this._metadata, this._metadata.softDeleteColumn);
+        if (!deletedColumn) {
+            throw new ColumnNotFoundError(this._metadata.softDeleteColumn!, this.entityClass.name);
+        }
+        return this.update(where, { [deletedColumn]: null } as Partial<T>, { withDeleted: true });
     }
 
     private async applyBeforeSaveHook(entity: Partial<T>, hooks: TransformHooks<T>): Promise<Partial<T>> {
