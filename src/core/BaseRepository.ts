@@ -1,8 +1,10 @@
 import type { Pool, QueryResult, ResultSetHeader } from 'mysql2/promise';
 import { coreOptions } from '../config/db';
 import {
+    type ColumnMetadata,
     type ComplexRelationMap,
     type Connection,
+    type EntityMetadata,
     type FieldKeys,
     type FindOneOptions,
     type FindOptions,
@@ -12,7 +14,6 @@ import {
     type OneToOneRelationMetadata,
     operatorQueryMap,
     type OrderByClause,
-    ORMError,
     type QueryOperator,
     type QueryParam,
     type QueryParams,
@@ -23,22 +24,28 @@ import {
     type TransformHooks,
     type WhereClause,
 } from '../types/common';
+import { ColumnNotFoundError, EntityMetadataNotFoundError, SoftDeleteNotSupportedError, UnsupportedQueryOperatorError } from '../types/errors';
 import { getEntityMetadata } from './EntityMetadata';
 import type { DeletedFindOptions } from './SoftDelete';
 
 export class BaseRepository<T extends object> {
+    private readonly _metadata: EntityMetadata;
+    private readonly _columnMap: Map<string, ColumnMetadata>;
+    private readonly _relationMap: Map<string, RelationMetadata>;
+    private readonly _primaryKey?: ColumnMetadata;
+
     constructor(
         protected connection: Connection,
         private entityClass: new () => T,
     ) {
-    }
-
-    private get metadata() {
         const metadata = getEntityMetadata(this.entityClass);
         if (!metadata) {
-            throw new ORMError(`Entity metadata not found for ${this.entityClass.name}`);
+            throw new EntityMetadataNotFoundError(this.entityClass.name);
         }
-        return metadata;
+        this._metadata = metadata;
+        this._columnMap = new Map(metadata.columns.map(c => [c.propertyKey, c]));
+        this._relationMap = new Map(metadata.relations.map(r => [r.propertyKey, r]));
+        this._primaryKey = metadata.columns.find(c => c.primary);
     }
 
     async query(sql: string, params?: QueryParams): Promise<QueryResult> {
@@ -53,21 +60,23 @@ export class BaseRepository<T extends object> {
     }
 
     renderSelectColumns(whereValues: QueryParams, select?: SelectClause<T>): string {
-        const metadata = this.metadata;
         let columns: string[];
 
         if (select && select.length > 0) {
             // Filter columns based on select clause
             columns = select.map(field => {
-                const column = metadata.columns.find(c => c.propertyKey === field || c.columnName === field);
-                return column ? column.columnName : field as string;
+                const column = this._columnMap.get(field as string);
+                if (!column) {
+                    throw new ColumnNotFoundError(field as string, this.entityClass.name);
+                }
+                return column.columnName;
             });
         } else {
             // Use all columns
-            columns = metadata.columns.map(c => c.columnName);
+            columns = this._columnMap.keys().toArray();
         }
 
-        whereValues.unshift(metadata.tableName);
+        whereValues.unshift(this._metadata.tableName);
         whereValues.unshift(...columns);
         return columns.map(() => '??').join(', ');
     }
@@ -97,15 +106,15 @@ export class BaseRepository<T extends object> {
     renderWhereClauses(where: WhereClause<T>, options?: DeletedFindOptions): [string[], QueryParams] {
         const whereClauses: string[] = [];
         const whereValues: QueryParams = [];
-        const metadata = this.metadata;
+
         for (const [key, value] of Object.entries(where)) {
-            const column = metadata.columns.find(c => c.propertyKey === key);
+            const column = this._columnMap.get(key);
             if (column) {
                 const operatorOrValue = typeof value === 'object' && !Array.isArray(value) && value !== null ? value : { $eq: value };
                 Object.keys(operatorOrValue as object).forEach(operatorKey => {
                     const [operator, valuePlaceholders] = operatorQueryMap[operatorKey as QueryOperator] || [];
                     if (!operator) {
-                        throw new ORMError(`Unsupported operator: ${operatorKey} for column ${column.columnName}`);
+                        throw new UnsupportedQueryOperatorError(operatorKey);
                     }
                     whereClauses.push(`?? ${operator} ${valuePlaceholders ? valuePlaceholders.join(' ') : '?'}`);
                     whereValues.push(column.columnName);
@@ -117,12 +126,12 @@ export class BaseRepository<T extends object> {
                     }
                 });
             } else {
-                throw new ORMError(`Column ${key} not found in entity ${this.entityClass.name}`);
+                throw new ColumnNotFoundError(key, this.entityClass.name);
             }
         }
-        if (!options?.withDeleted && metadata.softDelete && metadata.softDeleteColumn) {
+        if (!options?.withDeleted && this._metadata.softDelete && this._metadata.softDeleteColumn) {
             whereClauses.push(`?? IS NULL`);
-            whereValues.push(metadata.softDeleteColumn);
+            whereValues.push(this._metadata.softDeleteColumn);
         }
         return [whereClauses, whereValues];
     }
@@ -134,25 +143,31 @@ export class BaseRepository<T extends object> {
     renderOrderByClause(orderBy: OrderByClause<T> | undefined, orderValues: QueryParams): string {
         if (!orderBy) return '';
 
-        const metadata = this.metadata;
         const orderClauses: string[] = [];
 
         if (Array.isArray(orderBy)) {
             // Handle array format: ['field1', 'field2']
             for (const field of orderBy) {
-                const column = metadata.columns.find(c => c.propertyKey === field || c.columnName === field);
+                const column = this._columnMap.get(field as string);
                 if (column) {
                     orderClauses.push('?? ASC');
                     orderValues.push(column.columnName);
+                } else {
+                    throw new ColumnNotFoundError(field as string, this.entityClass.name);
                 }
             }
         } else if (typeof orderBy === 'object') {
             // Handle object format: { field1: 'DESC', field2: 'ASC' }
             for (const [field, direction] of Object.entries(orderBy)) {
-                const column = metadata.columns.find(c => c.propertyKey === field || c.columnName === field);
-                if (column && direction && typeof direction === 'string') {
+                if (!direction || typeof direction !== 'string') {
+                    continue;
+                }
+                const column = this._columnMap.get(field);
+                if (column) {
                     orderClauses.push(`?? ${direction.toUpperCase()}`);
                     orderValues.push(column.columnName);
+                } else {
+                    throw new ColumnNotFoundError(field, this.entityClass.name);
                 }
             }
         }
@@ -195,13 +210,12 @@ export class BaseRepository<T extends object> {
     }
 
     async create(entity: Partial<T> | T): Promise<T | number> {
-        const metadata = this.metadata;
         const dbObject = this.mapToDB(entity);
 
         const columns = [];
         const placeholders = [];
         const values: QueryParams = [];
-        const columnNames: QueryParams = [metadata.tableName];
+        const columnNames: QueryParams = [this._metadata.tableName];
 
         for (const [columnName, value] of Object.entries(dbObject)) {
             columns.push('??');
@@ -219,27 +233,24 @@ export class BaseRepository<T extends object> {
         return result.insertId;
     }
 
-    async findByPrimaryValue(primaryValue: number) {
-        const primaryColumn = this.metadata.columns.find(c => c.primary);
-        if (!primaryColumn) {
-            return primaryValue;
+    async findByPrimaryValue(primaryValue: number | string): Promise<T | null> {
+        if (!this._primaryKey) {
+            return null;
         }
-        return await this.findOne({ [primaryColumn.propertyKey]: primaryValue } as WhereClause<T>);
+        return this.findOne({ [this._primaryKey.propertyKey]: primaryValue } as WhereClause<T>);
     }
 
     async update(where: WhereClause<T> | T, updates?: Partial<T>, options?: DeletedFindOptions): Promise<T | number>;
     async update(where: T): Promise<T>;
     async update(where: WhereClause<T> | T, updates?: Partial<T>, options?: DeletedFindOptions): Promise<T | number> {
-        const metadata = this.metadata;
         const isInstance = where instanceof this.entityClass;
         const entity = isInstance ? where as T : {} as T;
         if (isInstance) {
-            const primaryColumn = metadata.columns.find(c => c.primary);
-            if (primaryColumn) {
+            if (this._primaryKey) {
                 if (!updates) {
                     updates = where as Partial<T>;
                 }
-                where = { [primaryColumn.propertyKey]: (where as T)[primaryColumn.propertyKey as keyof T] } as WhereClause<T>;
+                where = { [this._primaryKey.propertyKey]: (where as T)[this._primaryKey.propertyKey as keyof T] } as WhereClause<T>;
             }
         }
         const updateDbObject = this.mapToDB(updates!);
@@ -256,7 +267,7 @@ export class BaseRepository<T extends object> {
         const whereClause = this.renderWhereClaude(whereClauses);
 
         const sql = `UPDATE ?? SET ${setClauses.join(', ')} ${whereClause}`;
-        const result = await this.query(sql, [...[metadata.tableName] as QueryParams, ...setValues, ...whereValues]) as ResultSetHeader;
+        const result = await this.query(sql, [...[this._metadata.tableName] as QueryParams, ...setValues, ...whereValues]) as ResultSetHeader;
         if (result.affectedRows === 1 && isInstance) {
             const updatedEntity = await this.findOne(where, options);
             if (updatedEntity) {
@@ -270,21 +281,23 @@ export class BaseRepository<T extends object> {
     async delete(where: WhereClause<T>): Promise<number>;
     async delete(where: T): Promise<T>;
     async delete(where: WhereClause<T> | T): Promise<T | number> {
-        const metadata = this.metadata;
-        if (metadata.softDelete) {
-            return await this.update(where as WhereClause<T> | T, { [metadata.softDeleteColumn!]: new Date() } as Partial<T>, { withDeleted: true });
+        if (this._metadata.softDelete) {
+            return await this.update(
+                where as WhereClause<T> | T,
+                { [this._metadata.softDeleteColumn!]: new Date() } as Partial<T>,
+                { withDeleted: true },
+            );
         }
 
         const isInstance = where instanceof this.entityClass;
         if (isInstance) {
-            const primaryColumn = metadata.columns.find(c => c.primary);
-            if (primaryColumn) {
-                where = { [primaryColumn.propertyKey]: (where as T)[primaryColumn.propertyKey as keyof T] } as WhereClause<T>;
+            if (this._primaryKey) {
+                where = { [this._primaryKey.propertyKey]: (where as T)[this._primaryKey.propertyKey as keyof T] } as WhereClause<T>;
             }
         }
         const [whereClauses, whereValues] = this.renderWhereClauses(where);
         const whereClause = this.renderWhereClaude(whereClauses);
-        whereValues.unshift(metadata.tableName);
+        whereValues.unshift(this._metadata.tableName);
         const sql = `DELETE FROM ?? ${whereClause}`;
         const result = await this.query(sql, whereValues) as ResultSetHeader;
         return result.affectedRows;
@@ -293,11 +306,10 @@ export class BaseRepository<T extends object> {
     async restore(where: WhereClause<T> | T): Promise<T | number>;
     async restore(where: T): Promise<T>;
     async restore(where: WhereClause<T> | T): Promise<T | number> {
-        const metadata = this.metadata;
-        if (!metadata.softDelete) {
-            throw new ORMError(`Entity ${this.entityClass.name} does not support soft delete restoration.`);
+        if (!this._metadata.softDelete) {
+            throw new SoftDeleteNotSupportedError(this.entityClass.name);
         }
-        return this.update(where, { [metadata.softDeleteColumn!]: null } as Partial<T>, { withDeleted: true });
+        return this.update(where, { [this._metadata.softDeleteColumn!]: null } as Partial<T>, { withDeleted: true });
     }
 
     private applyBeforeSaveHook(entity: Partial<T>, hooks: TransformHooks<T>): Partial<T> {
@@ -316,56 +328,52 @@ export class BaseRepository<T extends object> {
 
     private mapToEntity(row: T): T {
         const entity = new this.entityClass() as T;
-        const metadata = this.metadata;
 
-        for (const column of metadata.columns) {
+        for (const [propertyKey, column] of this._columnMap.entries()) {
             let value = row[column.columnName as keyof T];
 
-            if (value === null || value === undefined) {
-                entity[column.propertyKey as keyof T] = null as T[keyof T];
-                continue;
+            if (value !== null && value !== undefined) {
+                switch (column.type) {
+                    case 'number':
+                        value = Number(value) as T[keyof T];
+                        break;
+                    case 'boolean':
+                        value = Boolean(value) as T[keyof T];
+                        break;
+                    case 'date':
+                        if (!(value as unknown instanceof Date)) {
+                            value = new Date(value as string) as T[keyof T];
+                        }
+                        break;
+                    case 'json':
+                        if (typeof (value as unknown) === 'string') {
+                            try {
+                                value = JSON.parse(value as string) as T[keyof T];
+                            } catch {
+                                // Keep original value if parsing fails
+                            }
+                        }
+                        break;
+                }
             }
 
-            switch (column.type) {
-                case 'number':
-                    value = Number(value) as T[keyof T];
-                    break;
-                case 'boolean':
-                    value = Boolean(value) as T[keyof T];
-                    break;
-                case 'date':
-                    if (!(value as unknown instanceof Date)) {
-                        value = new Date(value as string) as T[keyof T];
-                    }
-                    break;
-                case 'json':
-                    if (!((value) instanceof Object) && value) {
-                        value = JSON.parse(value as string) as T[keyof T];
-                    }
-                    break;
-            }
-
-            entity[column.propertyKey as keyof T] = value;
+            entity[propertyKey as keyof T] = value;
         }
 
-        return this.applyAfterLoadHook(entity, metadata.transformHooks) as T;
+        return this.applyAfterLoadHook(entity, this._metadata.transformHooks) as T;
     }
 
     private mapToDB(entity: Partial<T>): any {
-        const metadata = this.metadata;
         const dbObject: any = {};
-        const transformed = this.applyBeforeSaveHook(entity, metadata.transformHooks);
+        const transformed = this.applyBeforeSaveHook(entity, this._metadata.transformHooks);
 
-        for (const column of metadata.columns) {
-            const value = (transformed as any)[column.propertyKey];
-
-            if (value === undefined) continue;
+        for (const [propertyKey, value] of Object.entries(transformed)) {
+            const column = this._columnMap.get(propertyKey);
+            if (!column) continue;
 
             let dbValue = value;
 
-            if (value === null) {
-                dbValue = null;
-            } else {
+            if (value !== null && value !== undefined) {
                 switch (column.type) {
                     case 'date':
                         dbValue = (value as Date).toISOString().slice(0, 19).replace('T', ' ');
@@ -374,7 +382,7 @@ export class BaseRepository<T extends object> {
                         dbValue = JSON.stringify(value);
                         break;
                     case 'boolean':
-                        dbValue = !!value ? 1 : 0;
+                        dbValue = value ? 1 : 0;
                         break;
                 }
             }
@@ -404,9 +412,8 @@ export class BaseRepository<T extends object> {
     private async loadSimpleRelation(entities: T[], relationPath: string): Promise<void> {
         const parts = relationPath.split('.');
         const relationName = parts[0] as FieldKeys<T>;
-        const metadata = this.metadata;
 
-        const relation = metadata.relations.find(r => r.propertyKey === relationName);
+        const relation = this._relationMap.get(relationName as string);
         if (!relation) return;
 
         // Load the immediate relation with optimized method calls
@@ -443,10 +450,8 @@ export class BaseRepository<T extends object> {
     }
 
     private async loadComplexRelation(entities: T[], complexRelationMap: ComplexRelationMap<T>): Promise<void> {
-        const metadata = this.metadata;
-
         for (const [relationName, relationOptions] of Object.entries(complexRelationMap)) {
-            const relation = metadata.relations.find(r => r.propertyKey === relationName);
+            const relation = this._relationMap.get(relationName);
             if (!relation || !relationOptions) continue;
 
             // Merge relation options with the base relation
@@ -501,16 +506,12 @@ export class BaseRepository<T extends object> {
 
     private async loadOneToOne(entities: T[], relation: OneToOneRelationMetadata, options?: RelationConfig): Promise<void> {
         const TargetClass = relation.target();
-        const targetMetadata = getEntityMetadata(TargetClass);
-        if (!targetMetadata) return;
+        const targetRepository = new BaseRepository(this.connection, TargetClass as new () => object);
 
-        const targetPrimaryColumn = targetMetadata.columns.find(c => c.primary);
-        const localKey = relation.localKey || targetPrimaryColumn?.propertyKey || `${targetMetadata.tableName}_id`;
+        const localKey = relation.localKey || targetRepository._primaryKey?.propertyKey || `${targetRepository._metadata.tableName}_id`;
 
-        const primaryColumn = this.metadata.columns.find(c => c.primary);
-        const foreignKey = relation.foreignKey || primaryColumn?.propertyKey || `${this.metadata.tableName}_id`;
+        const foreignKey = relation.foreignKey || this._primaryKey?.propertyKey || `${this._metadata.tableName}_id`;
 
-        const repo = new BaseRepository(this.connection, TargetClass as new () => object);
         const ids = entities.map(e => (e as any)[foreignKey]);
 
         const whereClause = Object.assign({
@@ -518,7 +519,7 @@ export class BaseRepository<T extends object> {
         }, relation.where || {});
 
         const findOptions = this.buildFindOptions(options);
-        const relatedEntities = await repo.find(whereClause, findOptions);
+        const relatedEntities = await targetRepository.find(whereClause, findOptions);
 
         const map = new Map<any, any>();
         for (const entity of relatedEntities) {
@@ -533,34 +534,27 @@ export class BaseRepository<T extends object> {
     }
 
     private async loadOneToMany(entities: T[], relation: OneToManyRelationMetadata, options?: RelationConfig): Promise<void> {
+        if (!this._primaryKey) return;
         const TargetClass = relation.target();
-        const targetMetadata = getEntityMetadata(TargetClass);
-        if (!targetMetadata) return;
-
-        const primaryKey = this.metadata.columns.find(c => c.primary);
-        if (!primaryKey) return;
-
-        const inverseRelation = targetMetadata.relations.find(
-            r => r.propertyKey === relation.inverseSide,
-        ) as ManyToOneRelationMetadata;
+        const targetRepository = new BaseRepository(this.connection, TargetClass as new () => object);
+        const inverseRelation = targetRepository._relationMap.get(relation.inverseSide) as ManyToOneRelationMetadata;
 
         if (!inverseRelation) return;
 
-        const foreignKey = inverseRelation.foreignKey || `${this.metadata.tableName}_id`;
+        const foreignKey = inverseRelation.foreignKey || `${this._metadata.tableName}_id`;
 
-        const repo = new BaseRepository(this.connection, TargetClass as new () => object);
-        const ids = entities.map(e => (e as any)[primaryKey.propertyKey]);
+        const ids = entities.map(e => (e as any)[this._primaryKey!.propertyKey]);
 
         const whereClause = Object.assign({
             [foreignKey]: { $in: ids },
         }, relation.where || {});
 
         const findOptions = this.buildFindOptions(options);
-        const relatedEntities = await repo.find(whereClause, findOptions);
+        const relatedEntities = await targetRepository.find(whereClause, findOptions);
 
         const map = new Map<any, any[]>();
         for (const entity of entities) {
-            const id = (entity as any)[primaryKey.propertyKey];
+            const id = (entity as any)[this._primaryKey.propertyKey];
             map.set(id, []);
         }
 
@@ -572,36 +566,32 @@ export class BaseRepository<T extends object> {
         }
 
         for (const entity of entities) {
-            const id = (entity as any)[primaryKey.propertyKey];
+            const id = (entity as any)[this._primaryKey.propertyKey];
             (entity as any)[relation.propertyKey] = map.get(id) || [];
         }
     }
 
     private async loadManyToOne(entities: T[], relation: ManyToOneRelationMetadata, options?: RelationConfig): Promise<void> {
         const TargetClass = relation.target();
-        const targetMetadata = getEntityMetadata(TargetClass);
-        if (!targetMetadata) return;
-
-        const primaryKey = targetMetadata.columns.find(c => c.primary);
-        if (!primaryKey) return;
+        const targetRepository = new BaseRepository(this.connection, TargetClass as new () => object);
+        if (!targetRepository._primaryKey) return;
 
         const foreignKey = relation.foreignKey || `${TargetClass.name.toLowerCase()}_id`;
 
-        const repo = new BaseRepository(this.connection, TargetClass as new () => object);
         const ids = entities
             .map(e => (e as any)[foreignKey])
             .filter((id, index, self) => id && self.indexOf(id) === index);
 
         const whereClause = Object.assign({
-            [primaryKey.propertyKey]: { $in: ids },
+            [targetRepository._primaryKey.propertyKey]: { $in: ids },
         }, relation.where || {});
 
         const findOptions = this.buildFindOptions(options);
-        const relatedEntities = await repo.find(whereClause, findOptions);
+        const relatedEntities = await targetRepository.find(whereClause, findOptions);
 
         const map = new Map<any, any>();
         for (const entity of relatedEntities) {
-            const id = (entity as any)[primaryKey.propertyKey];
+            const id = (entity as any)[targetRepository._primaryKey.propertyKey];
             map.set(id, entity);
         }
 
@@ -612,19 +602,14 @@ export class BaseRepository<T extends object> {
     }
 
     private async loadManyToMany(entities: T[], relation: ManyToManyRelationMetadata, options?: RelationConfig): Promise<void> {
+        if (!this._primaryKey) return;
         const TargetClass = relation.target();
-        const targetMetadata = getEntityMetadata(TargetClass);
-        if (!targetMetadata) return;
-
-        const currentPrimaryKeyColumn = this.metadata.columns.find(c => c.primary);
-        if (!currentPrimaryKeyColumn) return;
-
-        const targetPrimaryKeyColumn = targetMetadata.columns.find(c => c.primary);
-        if (!targetPrimaryKeyColumn) return;
+        const targetRepository = new BaseRepository(this.connection, TargetClass as new () => object);
+        if (!targetRepository._primaryKey) return;
 
         const { joinTableName, joinColumnName, inverseJoinColumnName } = relation;
 
-        const ids = entities.map(e => (e as T)[currentPrimaryKeyColumn.propertyKey as keyof T]);
+        const ids = entities.map(e => (e as T)[this._primaryKey!.propertyKey as keyof T]);
         if (ids.length === 0) return;
 
         const targetAlias = 't';
@@ -638,14 +623,14 @@ export class BaseRepository<T extends object> {
             joinTableAlias,
             joinColumnName,
             coreOptions.sourceEntityIdAlias,
-            targetMetadata.tableName,
+            targetRepository._metadata.tableName,
             targetAlias,
             joinTableName,
             joinTableAlias,
             joinTableAlias,
             inverseJoinColumnName,
             targetAlias,
-            targetPrimaryKeyColumn.columnName,
+            targetRepository._primaryKey.columnName,
             joinTableAlias,
             joinColumnName,
             ids,
@@ -667,21 +652,18 @@ export class BaseRepository<T extends object> {
 
         const relatedEntitiesRaw = await this.query(sql, queryParams) as T[];
 
-        // Prepare a repository for mapping target rows to entities
-        const targetRepoInstance = new BaseRepository(this.connection, TargetClass as new () => object);
-
         // Map to store relationships: Source Entity ID -> Array of Target Entities
         const map = new Map<any, T[]>();
-        entities.forEach(entity => map.set((entity as T)[currentPrimaryKeyColumn.propertyKey as keyof T], []));
+        entities.forEach(entity => map.set((entity as T)[this._primaryKey!.propertyKey as keyof T], []));
 
         for (const row of relatedEntitiesRaw) {
             const sourceEntityFkValue = row[coreOptions.sourceEntityIdAlias as keyof T];
-            const targetEntity = targetRepoInstance.mapToEntity(row) as T; // mapToEntity will ignore the alias column
+            const targetEntity = targetRepository.mapToEntity(row) as T; // mapToEntity will ignore the alias column
 
             if (map.has(sourceEntityFkValue)) {
                 const existingRelations = map.get(sourceEntityFkValue)!;
                 // Add if not already present (safeguard, DISTINCT should mostly handle this)
-                if (!existingRelations.some(ex => (ex as any)[targetPrimaryKeyColumn.propertyKey] === (targetEntity as any)[targetPrimaryKeyColumn.propertyKey])) {
+                if (!existingRelations.some(ex => (ex as any)[targetRepository._primaryKey!.propertyKey] === (targetEntity as any)[targetRepository._primaryKey!.propertyKey])) {
                     existingRelations.push(targetEntity);
                 }
             }
@@ -689,7 +671,7 @@ export class BaseRepository<T extends object> {
 
         // Assign relationships to entities
         for (const entity of entities) {
-            const entityId = (entity as T)[currentPrimaryKeyColumn.propertyKey as keyof T];
+            const entityId = (entity as T)[this._primaryKey.propertyKey as keyof T];
             (entity as any)[relation.propertyKey] = map.get(entityId) || [];
         }
     }

@@ -138,13 +138,6 @@ export function where<T>(whereClause: WhereClause<T>): WhereClause<T> {
     return whereClause;
 }
 
-export class ORMError extends Error {
-    constructor(message: string) {
-        super(message);
-        this.name = 'ORMError';
-    }
-}
-
 // Enhanced query and relation types with orderBy and select support
 export type DotNotationRelation<T> = `${string & FieldKeys<T>}.${string}`;
 
@@ -154,7 +147,7 @@ export type OrderByClause<T> = {
     [K in FieldKeys<T>]?: OrderDirection;
 } | FieldKeys<T>[] | string[];
 
-export type SelectClause<T> = FieldKeys<T>[] | string[];
+export type SelectClause<T> = FieldKeys<T>[];
 
 export type RelationConfig<T = any> = {
     relations?: RelationSpec<T>[];
