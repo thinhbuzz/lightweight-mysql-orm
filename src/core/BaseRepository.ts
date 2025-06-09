@@ -239,7 +239,7 @@ export class BaseRepository<T extends object> {
         if (!this._primaryKey) {
             return null;
         }
-        return this.findOne({ [this._primaryKey.propertyKey]: primaryValue } as WhereClause<T>);
+        return this.findOne({ [this._primaryKey.columnName]: primaryValue } as WhereClause<T>);
     }
 
     async update(where: WhereClause<T> | T, updates?: Partial<T>, options?: DeletedFindOptions): Promise<T | number>;
@@ -252,7 +252,7 @@ export class BaseRepository<T extends object> {
                 if (!updates) {
                     updates = where as Partial<T>;
                 }
-                where = { [this._primaryKey.propertyKey]: (where as T)[this._primaryKey.propertyKey as keyof T] } as WhereClause<T>;
+                where = { [this._primaryKey.columnName]: (where as T)[this._primaryKey.propertyKey as keyof T] } as WhereClause<T>;
             }
         }
         const updateDbObject = this.mapToDB(updates!);
@@ -294,7 +294,7 @@ export class BaseRepository<T extends object> {
         const isInstance = where instanceof this.entityClass;
         if (isInstance) {
             if (this._primaryKey) {
-                where = { [this._primaryKey.propertyKey]: (where as T)[this._primaryKey.propertyKey as keyof T] } as WhereClause<T>;
+                where = { [this._primaryKey.columnName]: (where as T)[this._primaryKey.propertyKey as keyof T] } as WhereClause<T>;
             }
         }
         const [whereClauses, whereValues] = this.renderWhereClauses(where);
@@ -512,13 +512,20 @@ export class BaseRepository<T extends object> {
         return findOptions;
     }
 
+    private getPropertyKeyColumnByColumnName(metadata: EntityMetadata, columnName?: string): string | undefined {
+        if (!columnName) return undefined;
+        return metadata.columns.find(c => c.columnName === columnName)?.propertyKey;
+    }
+
     private async loadOneToOne(entities: T[], relation: OneToOneRelationMetadata, options?: RelationConfig): Promise<void> {
         const TargetClass = relation.target();
         const targetRepository = new BaseRepository(this.connection, TargetClass as new () => object);
 
-        const localKey = relation.localKey || targetRepository._primaryKey?.propertyKey || `${targetRepository._metadata.tableName}_id`;
+        const localKey = this.getPropertyKeyColumnByColumnName(targetRepository._metadata, relation.localKey)
+            || targetRepository._primaryKey?.columnName
+            || `${targetRepository._metadata.tableName}_id`;
 
-        const foreignKey = relation.foreignKey || this._primaryKey?.propertyKey || `${this._metadata.tableName}_id`;
+        const foreignKey = relation.foreignKey || this._primaryKey?.columnName || `${this._metadata.tableName}_id`;
 
         const ids = entities.map(e => (e as any)[foreignKey]);
 
@@ -549,7 +556,7 @@ export class BaseRepository<T extends object> {
 
         if (!inverseRelation) return;
 
-        const foreignKey = inverseRelation.foreignKey || `${this._metadata.tableName}_id`;
+        const foreignKey = this.getPropertyKeyColumnByColumnName(targetRepository._metadata, inverseRelation.foreignKey) || `${this._metadata.tableName}_id`;
 
         const ids = entities.map(e => (e as any)[this._primaryKey!.propertyKey]);
 
@@ -584,14 +591,14 @@ export class BaseRepository<T extends object> {
         const targetRepository = new BaseRepository(this.connection, TargetClass as new () => object);
         if (!targetRepository._primaryKey) return;
 
-        const foreignKey = relation.foreignKey || `${TargetClass.name.toLowerCase()}_id`;
+        const foreignKey = this.getPropertyKeyColumnByColumnName(targetRepository._metadata, relation.foreignKey) || `${TargetClass.name.toLowerCase()}_id`;
 
         const ids = entities
             .map(e => (e as any)[foreignKey])
             .filter((id, index, self) => id && self.indexOf(id) === index);
 
         const whereClause = Object.assign({
-            [targetRepository._primaryKey.propertyKey]: { $in: ids },
+            [targetRepository._primaryKey.columnName]: { $in: ids },
         }, relation.where || {});
 
         const findOptions = this.buildFindOptions(options);
