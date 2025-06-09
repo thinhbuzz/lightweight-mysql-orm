@@ -2,7 +2,6 @@ import type { Pool, PoolConnection } from 'mysql2/promise';
 import type { DeletedFindOptions } from '../core/SoftDelete';
 
 export type Connection = Pool | PoolConnection;
-export type QueryResult = any;
 export type QueryParam = string | number | boolean | null | Date;
 export type QueryParams = (QueryParam | QueryParam[] | (QueryParam | QueryParam[]))[];
 
@@ -146,7 +145,28 @@ export class ORMError extends Error {
     }
 }
 
-export type RelationFindOptions<T> = { relations?: FieldKeys<T>[] };
+// Optimized relation types for better performance and type inference
+export type DotNotationRelation<T> = `${string & FieldKeys<T>}.${string}`;
+
+export type RelationConfig<T = any> = {
+    relations?: RelationSpec<T>[];
+    where?: WhereClause<T>;
+    limit?: number;
+    offset?: number;
+};
+
+export type ComplexRelationMap<T> = {
+    [K in FieldKeys<T>]?: RelationConfig<T[K]>;
+};
+
+export type RelationSpec<T = any> = 
+    | FieldKeys<T>
+    | DotNotationRelation<T>
+    | ComplexRelationMap<T>;
+
+export type RelationFindOptions<T> = { 
+    relations?: RelationSpec<T>[];
+};
 export type OffsetLimitOptions = { offset?: number; limit?: number };
 export type FindOneOptions<T> = RelationFindOptions<T> & DeletedFindOptions;
 export type FindOptions<T> = FindOneOptions<T> & OffsetLimitOptions;

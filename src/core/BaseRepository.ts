@@ -1,6 +1,7 @@
 import type { Pool, QueryResult, ResultSetHeader } from 'mysql2/promise';
-import { options } from '../config/db';
+import { coreOptions } from '../config/db';
 import {
+    type ComplexRelationMap,
     type Connection,
     type FieldKeys,
     type FindOneOptions,
@@ -14,6 +15,9 @@ import {
     type QueryOperator,
     type QueryParam,
     type QueryParams,
+    type RelationConfig,
+    type RelationMetadata,
+    type RelationSpec,
     type TransformHooks,
     type WhereClause,
 } from '../types/common';
@@ -36,7 +40,7 @@ export class BaseRepository<T extends object> {
     }
 
     async query(sql: string, params?: QueryParams): Promise<QueryResult> {
-        if (options.printQuery) {
+        if (coreOptions.printQuery) {
             console.info('Executing SQL:', sql);
             if (params && params.length > 0) {
                 console.info('\tParameters:', params);
@@ -241,11 +245,9 @@ export class BaseRepository<T extends object> {
     }
 
     private applyBeforeSaveHook(entity: Partial<T>, hooks: TransformHooks<T>): Partial<T> {
-
         if (hooks.beforeSave) {
             entity = hooks.beforeSave(entity);
         }
-
         return entity;
     }
 
@@ -253,7 +255,6 @@ export class BaseRepository<T extends object> {
         if (hooks.afterLoad) {
             entity = hooks.afterLoad(entity);
         }
-
         return entity;
     }
 
@@ -328,34 +329,119 @@ export class BaseRepository<T extends object> {
         return dbObject;
     }
 
-    private async loadRelations(entities: T[], relations: FieldKeys<T>[]): Promise<void> {
+    private async loadRelations(entities: T[], relations: RelationSpec<T>[]): Promise<void> {
         if (!entities.length) {
             return;
         }
-        const metadata = this.metadata;
 
-        for (const relationName of relations) {
-            const relation = metadata.relations.find(r => r.propertyKey === relationName);
-            if (!relation) continue;
-
-            switch (relation.type) {
-                case 'OneToOne':
-                    await this.loadOneToOne(entities, relation);
-                    break;
-                case 'OneToMany':
-                    await this.loadOneToMany(entities, relation);
-                    break;
-                case 'ManyToOne':
-                    await this.loadManyToOne(entities, relation);
-                    break;
-                case 'ManyToMany':
-                    await this.loadManyToMany(entities, relation);
-                    break;
+        for (const relationSpec of relations) {
+            if (typeof (relationSpec as unknown) === 'string') {
+                // Handle simple relations like 'posts' or 'posts.comments'
+                await this.loadSimpleRelation(entities, relationSpec as string);
+            } else if (typeof relationSpec === 'object') {
+                // Handle complex relations like { posts: { relations: ['comments'], where: {...} } }
+                await this.loadComplexRelation(entities, relationSpec);
             }
         }
     }
 
-    private async loadOneToOne(entities: T[], relation: OneToOneRelationMetadata): Promise<void> {
+    private async loadSimpleRelation(entities: T[], relationPath: string): Promise<void> {
+        const parts = relationPath.split('.');
+        const relationName = parts[0] as FieldKeys<T>;
+        const metadata = this.metadata;
+
+        const relation = metadata.relations.find(r => r.propertyKey === relationName);
+        if (!relation) return;
+
+        // Load the immediate relation with optimized method calls
+        await this.loadRelationByType(entities, relation);
+
+        // If there's a nested path (e.g., 'posts.comments'), load nested relations
+        if (parts.length > 1) {
+            const nestedPath = parts.slice(1).join('.');
+            const relatedEntities = this.getRelatedEntities(entities, relationName, relation.type);
+
+            if (relatedEntities.length > 0) {
+                const TargetClass = relation.target();
+                const nestedRepo = new BaseRepository(this.connection, TargetClass as new () => any);
+                await nestedRepo.loadSimpleRelation(relatedEntities, nestedPath);
+            }
+        }
+    }
+
+    private async loadRelationByType(entities: T[], relation: RelationMetadata, options?: RelationConfig): Promise<void> {
+        switch (relation.type) {
+            case 'OneToOne':
+                await this.loadOneToOne(entities, relation, options);
+                break;
+            case 'OneToMany':
+                await this.loadOneToMany(entities, relation, options);
+                break;
+            case 'ManyToOne':
+                await this.loadManyToOne(entities, relation, options);
+                break;
+            case 'ManyToMany':
+                await this.loadManyToMany(entities, relation, options);
+                break;
+        }
+    }
+
+    private async loadComplexRelation(entities: T[], complexRelationMap: ComplexRelationMap<T>): Promise<void> {
+        const metadata = this.metadata;
+
+        for (const [relationName, relationOptions] of Object.entries(complexRelationMap)) {
+            const relation = metadata.relations.find(r => r.propertyKey === relationName);
+            if (!relation || !relationOptions) continue;
+
+            // Merge relation options with the base relation
+            const enhancedRelation = { ...relation };
+            if (relationOptions && typeof relationOptions === 'object' && 'where' in relationOptions && relationOptions.where) {
+                enhancedRelation.where = { ...relation.where, ...relationOptions.where };
+            }
+
+            // Load the relation with enhanced options
+            await this.loadRelationByType(entities, enhancedRelation, relationOptions as RelationConfig);
+
+            // Load nested relations if specified
+            if (relationOptions && typeof relationOptions === 'object' && 'relations' in relationOptions && Array.isArray(relationOptions.relations)) {
+                const relatedEntities = this.getRelatedEntities(entities, relationName as FieldKeys<T>, relation.type);
+
+                if (relatedEntities.length > 0) {
+                    const TargetClass = relation.target();
+                    const nestedRepo = new BaseRepository(this.connection, TargetClass as new () => any);
+                    await nestedRepo.loadRelations(relatedEntities, relationOptions.relations);
+                }
+            }
+        }
+    }
+
+    private getRelatedEntities(entities: T[], relationName: FieldKeys<T>, relationType: string): any[] {
+        const relatedEntities: any[] = [];
+
+        for (const entity of entities) {
+            const relatedValue = (entity as any)[relationName];
+            if (relatedValue) {
+                if (relationType === 'OneToMany' || relationType === 'ManyToMany') {
+                    if (Array.isArray(relatedValue)) {
+                        relatedEntities.push(...relatedValue);
+                    }
+                } else {
+                    relatedEntities.push(relatedValue);
+                }
+            }
+        }
+
+        return relatedEntities;
+    }
+
+    private buildFindOptions(options?: RelationConfig): any {
+        const findOptions: any = {};
+        if (options?.limit) findOptions.limit = options.limit;
+        if (options?.offset) findOptions.offset = options.offset;
+        return findOptions;
+    }
+
+    private async loadOneToOne(entities: T[], relation: OneToOneRelationMetadata, options?: RelationConfig): Promise<void> {
         const TargetClass = relation.target();
         const targetMetadata = getEntityMetadata(TargetClass);
         if (!targetMetadata) return;
@@ -369,9 +455,12 @@ export class BaseRepository<T extends object> {
         const repo = new BaseRepository(this.connection, TargetClass as new () => object);
         const ids = entities.map(e => (e as any)[foreignKey]);
 
-        const relatedEntities = await repo.find(Object.assign({
+        const whereClause = Object.assign({
             [localKey]: { $in: ids },
-        }, relation.where || {}));
+        }, relation.where || {});
+
+        const findOptions = this.buildFindOptions(options);
+        const relatedEntities = await repo.find(whereClause, findOptions);
 
         const map = new Map<any, any>();
         for (const entity of relatedEntities) {
@@ -385,7 +474,7 @@ export class BaseRepository<T extends object> {
         }
     }
 
-    private async loadOneToMany(entities: T[], relation: OneToManyRelationMetadata): Promise<void> {
+    private async loadOneToMany(entities: T[], relation: OneToManyRelationMetadata, options?: RelationConfig): Promise<void> {
         const TargetClass = relation.target();
         const targetMetadata = getEntityMetadata(TargetClass);
         if (!targetMetadata) return;
@@ -404,9 +493,12 @@ export class BaseRepository<T extends object> {
         const repo = new BaseRepository(this.connection, TargetClass as new () => object);
         const ids = entities.map(e => (e as any)[primaryKey.propertyKey]);
 
-        const relatedEntities = await repo.find(Object.assign({
+        const whereClause = Object.assign({
             [foreignKey]: { $in: ids },
-        }, relation.where || {}));
+        }, relation.where || {});
+
+        const findOptions = this.buildFindOptions(options);
+        const relatedEntities = await repo.find(whereClause, findOptions);
 
         const map = new Map<any, any[]>();
         for (const entity of entities) {
@@ -427,7 +519,7 @@ export class BaseRepository<T extends object> {
         }
     }
 
-    private async loadManyToOne(entities: T[], relation: ManyToOneRelationMetadata): Promise<void> {
+    private async loadManyToOne(entities: T[], relation: ManyToOneRelationMetadata, options?: RelationConfig): Promise<void> {
         const TargetClass = relation.target();
         const targetMetadata = getEntityMetadata(TargetClass);
         if (!targetMetadata) return;
@@ -442,9 +534,12 @@ export class BaseRepository<T extends object> {
             .map(e => (e as any)[foreignKey])
             .filter((id, index, self) => id && self.indexOf(id) === index);
 
-        const relatedEntities = await repo.find(Object.assign({
+        const whereClause = Object.assign({
             [primaryKey.propertyKey]: { $in: ids },
-        }, relation.where || {}));
+        }, relation.where || {});
+
+        const findOptions = this.buildFindOptions(options);
+        const relatedEntities = await repo.find(whereClause, findOptions);
 
         const map = new Map<any, any>();
         for (const entity of relatedEntities) {
@@ -458,7 +553,7 @@ export class BaseRepository<T extends object> {
         }
     }
 
-    private async loadManyToMany(entities: T[], relation: ManyToManyRelationMetadata): Promise<void> {
+    private async loadManyToMany(entities: T[], relation: ManyToManyRelationMetadata, options?: RelationConfig): Promise<void> {
         const TargetClass = relation.target();
         const targetMetadata = getEntityMetadata(TargetClass);
         if (!targetMetadata) return;
@@ -484,7 +579,7 @@ export class BaseRepository<T extends object> {
             targetAlias,
             joinTableAlias,
             joinColumnName,
-            options.sourceEntityIdAlias,
+            coreOptions.sourceEntityIdAlias,
             targetMetadata.tableName,
             targetAlias,
             joinTableName,
@@ -507,6 +602,11 @@ export class BaseRepository<T extends object> {
             }
         }
 
+        if (options?.limit) {
+            sql += ` LIMIT ?`;
+            queryParams.push(options.limit);
+        }
+
         const relatedEntitiesRaw = await this.query(sql, queryParams) as T[];
 
         // Prepare a repository for mapping target rows to entities
@@ -517,7 +617,7 @@ export class BaseRepository<T extends object> {
         entities.forEach(entity => map.set((entity as T)[currentPrimaryKeyColumn.propertyKey as keyof T], []));
 
         for (const row of relatedEntitiesRaw) {
-            const sourceEntityFkValue = row[options.sourceEntityIdAlias as keyof T];
+            const sourceEntityFkValue = row[coreOptions.sourceEntityIdAlias as keyof T];
             const targetEntity = targetRepoInstance.mapToEntity(row) as T; // mapToEntity will ignore the alias column
 
             if (map.has(sourceEntityFkValue)) {
@@ -529,9 +629,10 @@ export class BaseRepository<T extends object> {
             }
         }
 
+        // Assign relationships to entities
         for (const entity of entities) {
-            const id = (entity as T)[currentPrimaryKeyColumn.propertyKey as keyof T];
-            (entity as any)[relation.propertyKey] = map.get(id) || [];
+            const entityId = (entity as T)[currentPrimaryKeyColumn.propertyKey as keyof T];
+            (entity as any)[relation.propertyKey] = map.get(entityId) || [];
         }
     }
 }

@@ -6,14 +6,14 @@ export interface Options {
     sourceEntityIdAlias?: string;
 }
 
-export const options: Options = {
+export const coreOptions: Options = {
     printQuery: false,
     sourceEntityIdAlias: '_orm_source_fk_',
 };
 
 export function setOptions(newOptions: Options): Options {
-    Object.assign(options, newOptions);
-    return options;
+    Object.assign(coreOptions, newOptions);
+    return coreOptions;
 }
 
 export const createPool = (config: PoolOptions): Pool => {
