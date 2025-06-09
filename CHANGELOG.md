@@ -5,9 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.1.8] - 2025-06-09
 
 ### Added
+
+-   **Advanced Nested Relations**: Implemented comprehensive support for loading deeply nested relationships, allowing for complex data fetching in a single query.
+    -   Supports simple and intuitive **dot notation** for linear nesting (e.g., `relations: ['posts.comments']`).
+    -   Supports a powerful **object notation** to apply `where`, `orderBy`, `select`, `limit`, and even further nested `relations` to any level of the relation tree.
+-   **Powerful Query Capabilities**:
+    -   **Column Selection (`select`)**: Added full support for specifying which columns to return on both the primary query and any nested relation.
+    -   **Sorting (`orderBy`)**: Added full support for ordering results on both the primary query and any nested relation.
+-   **Custom Error Handling**: Introduced a new suite of specific error classes (`EntityMetadataNotFoundError`, `ColumnNotFoundError`, `SoftDeleteNotSupportedError`, `UnsupportedQueryOperatorError`) to provide more descriptive and catchable errors, replacing the generic `ORMError`.
+
+### Changed
+
+-   **Major Performance Overhaul**: Fundamentally refactored the `BaseRepository` for significant runtime performance gains and faster TypeScript compilation.
+    -   **Aggressive Metadata Caching**: The repository now caches all entity metadata, including column-to-property maps, relation maps, and the primary key, upon initialization. This eliminates redundant, expensive lookups in all `find`, `update`, `delete`, and relation-loading operations.
+    -   **Optimized Query Rendering**: Core methods like `renderWhereClauses`, `renderOrderByClause`, and `renderSelectColumns` now use the cached column map for O(1) lookups instead of O(n) array searches, providing a major speed boost for entities with many columns.
+    -   **Efficient Data Mapping**: `mapToEntity` and `mapToDB` were refactored to use the new caching system, making the hydration (database row to object) and dehydration (object to database row) of entities much faster.
+-   **Increased Query Strictness**: To prevent silent failures and hard-to-debug issues, queries are now much safer.
+    -   Using a non-existent column in a `select`, `orderBy`, or `where` clause will now throw a `ColumnNotFoundError`.
+-   **Internal Refactoring**:
+    -   Streamlined all relation-loading methods (`loadOneToOne`, `loadOneToMany`, etc.) to elegantly leverage the new caching mechanism.
+    -   Internal cached properties are now `readonly` for improved type safety.
+    -   Simplified the internal logic of `delete`, `update`, and `restore` methods.
+
+### Fixed
+
+-   Resolved major performance bottlenecks related to repeated `.find()` calls on entity column and relation arrays inside query logic.
+-   Improved the type signature of `findByPrimaryValue` to `Promise<T | null>` for better accuracy.
+-   Corrected object-to-database mapping logic to ensure boolean `false` values were correctly handled.
 
 ## [1.1.7] - 2025-06-08
 
