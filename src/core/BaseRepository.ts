@@ -1,4 +1,4 @@
-import type { Pool, QueryResult, ResultSetHeader } from 'mysql2/promise';
+import type { Pool, PoolConnection, QueryResult, ResultSetHeader } from 'mysql2/promise';
 import { coreOptions } from '../config/db';
 import {
     type ColumnMetadata,
@@ -707,6 +707,6 @@ export class BaseRepository<T extends object> {
     }
 }
 
-export function repository<T extends object>(pool: Pool, entityClass: new () => T) {
+export function repository<T extends object>(pool: Pool | PoolConnection, entityClass: new () => T) {
     return new BaseRepository(pool, entityClass);
 }
